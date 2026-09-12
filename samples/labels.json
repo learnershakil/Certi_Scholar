@@ -1,0 +1,45 @@
+{
+  "marksheet": {
+    "documentType": "marksheet",
+    "fields": {
+      "student_name": "ANANYA SHARMA",
+      "roll_number": "2410387",
+      "board": "STATE BOARD OF HIGHER SECONDARY EDUCATION",
+      "exam_year": "2025",
+      "total_obtained": "441",
+      "total_max": "500",
+      "percentage": "88.20",
+      "subjects.0.name": "English",
+      "subjects.0.obtained": "88",
+      "subjects.1.name": "Mathematics",
+      "subjects.1.obtained": "92",
+      "subjects.2.name": "Physics",
+      "subjects.2.obtained": "85",
+      "subjects.3.name": "Chemistry",
+      "subjects.3.obtained": "81",
+      "subjects.4.name": "Computer Science",
+      "subjects.4.obtained": "95"
+    },
+    "consistency": { "percentage_matches_marks": "pass", "total_matches_marks": "pass" }
+  },
+  "marksheet_inconsistent": {
+    "documentType": "marksheet",
+    "fields": { "percentage": "93.40", "total_obtained": "441" },
+    "consistency": { "percentage_matches_marks": "fail" }
+  },
+  "income_certificate": {
+    "documentType": "income_certificate",
+    "fields": {
+      "certificate_number": "INC/2026/004512",
+      "holder_name": "ANANYA SHARMA",
+      "annual_income": "2,40,000",
+      "issue_date": "15/06/2026",
+      "issuing_authority": "Tahsildar North District"
+    }
+  },
+  "identity": {
+    "documentType": "identity",
+    "fields": { "full_name": "ANANYA SHARMA", "date_of_birth": "14/08/2007", "id_number": "2345 6789 0124" },
+    "consistency": { "id_checksum": "pass" }
+  }
+}
