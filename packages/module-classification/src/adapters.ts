@@ -58,7 +58,7 @@ export class BullMqResultPublisher implements ResultPublisher {
     const sameJob = await queue.getJob(jobId);
     if (sameJob) {
       const state = await sameJob.getState();
-      if (state === "waiting" || state === "delayed") {
+      if (state === "waiting" || state === "delayed" || state === "failed") {
         try {
           await sameJob.remove();
         } catch (err) {
