@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "tsx watch src/dev-server.ts",
-    "seed": "tsx src/scripts/seed.ts",
+    "dev": "tsx watch --env-file=.env src/dev-server.ts",
+    "seed": "tsx --env-file=.env src/scripts/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check-types": "tsc --noEmit"
