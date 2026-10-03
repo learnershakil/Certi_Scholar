@@ -36,10 +36,42 @@ export class BullMqResultPublisher implements ResultPublisher {
 
   async publish(event: ClassificationCompletedEvent) {
     const queue = event.status === "classified" ? this.extraction : this.review;
-    // Custom jobId dedupes a retry while the earlier job is still queued.
+    const oppositeQueue = event.status === "classified" ? this.review : this.extraction;
+
+    const jobId = `${queue.name}-${event.documentId}`;
+    const oppositeJobId = `${oppositeQueue.name}-${event.documentId}`;
+
+    const oppositeJob = await oppositeQueue.getJob(oppositeJobId);
+    if (oppositeJob) {
+      const state = await oppositeJob.getState();
+      if (state === "waiting" || state === "delayed" || state === "prioritized") {
+        try {
+          await oppositeJob.remove();
+        } catch (err) {
+          console.warn(
+            `[classification] Could not remove stale job ${oppositeJobId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    }
+
+    const sameJob = await queue.getJob(jobId);
+    if (sameJob) {
+      const state = await sameJob.getState();
+      if (state === "waiting" || state === "delayed") {
+        try {
+          await sameJob.remove();
+        } catch (err) {
+          console.warn(
+            `[classification] Could not remove existing job ${jobId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    }
+
     await queue.add("classification-completed", event, {
       ...JOB_OPTS,
-      jobId: `${queue.name}-${event.documentId}`,
+      jobId,
     });
   }
 
