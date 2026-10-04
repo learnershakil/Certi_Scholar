@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - certischolar_net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - certischolar_net
+
+  clamav:
+    image: clamav/clamav:latest
+    ports:
+      - "3310:3310"
+    networks:
+      - certischolar_net
+
+volumes:
+  mongo_data:
+
+networks:
+  certischolar_net:
+    driver: bridge
