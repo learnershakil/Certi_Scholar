@@ -1,4 +1,4 @@
-import { Worker, type ConnectionOptions } from "bullmq";
+import { Worker, UnrecoverableError, type ConnectionOptions } from "bullmq";
 import { OcrCompletedEvent } from "./contracts.js";
 import { QUEUES } from "./queues.js";
 import type { ClassificationService } from "./service.js";
@@ -12,8 +12,14 @@ export function startClassificationWorker(opts: {
   const worker = new Worker(
     QUEUES.CLASSIFICATION,
     async (job) => {
-      const event = OcrCompletedEvent.parse(job.data);
-      return opts.service.run(event, {
+      const parsed = OcrCompletedEvent.safeParse(job.data);
+      if (!parsed.success) {
+        const detail = parsed.error.issues
+          .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+          .join("; ");
+        throw new UnrecoverableError(`Invalid OcrCompletedEvent: ${detail}`);
+      }
+      return opts.service.run(parsed.data, {
         actor: { type: "system", id: "classification-worker" },
       });
     },

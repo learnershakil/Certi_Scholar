@@ -9,3 +9,4 @@ export { QUEUES, createRedis } from "./queues.js";
 export { seedDocumentTypes } from "./seed.js";
 export { DEFAULT_DOCUMENT_TYPES } from "./seed-data.js";
 export * from "./adapters.js";
+export * from "./producer.js";
