@@ -11,6 +11,7 @@
     "seed": "tsx --env-file=.env src/scripts/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "check-types": "tsc --noEmit",
     "corpus": "tsx test/corpus-report.ts",
     "enqueue": "tsx --env-file=.env src/scripts/enqueue.ts"
