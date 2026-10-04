@@ -1,0 +1,13 @@
+DEMO PUBLIC SCHOOL
+STUDENT FEE PAYMENT RECEIPT
+
+Roll No: 445566
+Student Name: Test Student
+Board Affiliation: CBSE
+Grade 10 - Section A
+
+Subject-wise fee heads:
+- Laboratory and Practical Fee: Rs. 1,500
+- Computer Science Subject Fee: Rs. 2,000
+Total marks in admission eligibility criteria: 480
+Result of payment: success transaction completed

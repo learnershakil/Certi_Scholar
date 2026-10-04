@@ -15,6 +15,16 @@ export interface DocumentTypeDef {
   name: string;
   keywords: WeightedKeyword[];
   regexPatterns: WeightedPattern[];
+  /**
+   * If non-empty, at least ONE of these terms must appear, otherwise the document
+   * can never be auto-classified as this type (generic words alone must not decide).
+   */
+  anchorTerms?: string[];
+  /**
+   * If ANY of these terms appears, the document is never auto-classified as this
+   * type (e.g. "application form" or "affidavit" for an income certificate).
+   */
+  excludeTerms?: string[];
   /** Minimum score (0..1) the top candidate needs to be accepted automatically. */
   minConfidence: number;
   /** Which M4 extraction profile handles this type. Null until an admin links one. */
@@ -26,7 +36,9 @@ export type ReviewReason =
   | "empty_text"
   | "no_document_types"
   | "low_confidence"
-  | "ambiguous";
+  | "ambiguous"
+  | "no_anchor"
+  | "excluded_term";
 
 export interface Candidate {
   code: string;

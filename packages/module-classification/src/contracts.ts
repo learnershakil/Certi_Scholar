@@ -33,7 +33,14 @@ export const ClassificationCompletedEvent = z.object({
   candidates: z.array(z.object({ code: z.string(), score: z.number() })),
   evidence: z.array(z.string()),
   reason: z
-    .enum(["empty_text", "no_document_types", "low_confidence", "ambiguous"])
+    .enum([
+      "empty_text",
+      "no_document_types",
+      "low_confidence",
+      "ambiguous",
+      "no_anchor",
+      "excluded_term",
+    ])
     .nullable(),
   classifierVersion: z.string(),
 });
@@ -75,6 +82,8 @@ export const DocumentTypeInput = z.object({
   regexPatterns: z
     .array(z.object({ pattern: regexString, weight: z.number().positive() }))
     .default([]),
+  anchorTerms: z.array(z.string().min(1)).default([]),
+  excludeTerms: z.array(z.string().min(1)).default([]),
   minConfidence: z.number().min(0).max(1).default(0.4),
   extractionProfileId: z.string().nullable().default(null),
   active: z.boolean().default(true),

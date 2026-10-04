@@ -6,6 +6,8 @@ const documentTypeSchema = new Schema(
     name: { type: String, required: true },
     keywords: [{ _id: false, term: String, weight: Number }],
     regexPatterns: [{ _id: false, pattern: String, weight: Number }],
+    anchorTerms: { type: [String], default: [] },
+    excludeTerms: { type: [String], default: [] },
     minConfidence: { type: Number, default: 0.4 },
     extractionProfileId: { type: String, default: null },
     active: { type: Boolean, default: true },

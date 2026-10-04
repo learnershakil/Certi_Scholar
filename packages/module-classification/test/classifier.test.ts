@@ -121,3 +121,71 @@ describe("KeywordClassifier", () => {
     expect(r.candidates[0]?.code).toBe("MARKSHEET");
   });
 });
+
+describe("KeywordClassifier hardening", () => {
+  const mk = (over: Partial<DocumentTypeDef>): DocumentTypeDef => ({
+    code: "X",
+    name: "X",
+    keywords: [
+      { term: "alpha", weight: 3 },
+      { term: "beta", weight: 2 },
+      { term: "gamma", weight: 1 },
+    ],
+    regexPatterns: [],
+    minConfidence: 0.4,
+    extractionProfileId: null,
+    active: true,
+    ...over,
+  });
+
+  it("matches whole words only ('vid' must not match inside 'provide')", async () => {
+    const types = [mk({ keywords: [{ term: "vid", weight: 1 }], minConfidence: 0.5 })];
+    const r = await run("we provide video content for individuals", types);
+    expect(r.status).toBe("needs_review");
+    expect(r.evidence.length).toBe(0);
+  });
+
+  it("still matches a whole word next to punctuation", async () => {
+    const types = [mk({ keywords: [{ term: "vid", weight: 1 }], minConfidence: 0.5 })];
+    const r = await run("VID: 9123 4567", types);
+    expect(r.documentTypeCode).toBe("X");
+  });
+
+  it("routes to review when an exclude term is present", async () => {
+    const r = await run("alpha beta gamma affidavit", [mk({ excludeTerms: ["affidavit"] })]);
+    expect(r.status).toBe("needs_review");
+    expect(r.reason).toBe("excluded_term");
+    expect(r.documentTypeCode).toBeNull();
+    expect(r.evidence).toContain("excluded: affidavit");
+  });
+
+  it("routes to review when no anchor term is present", async () => {
+    const types = [mk({ anchorTerms: ["alpha"] })];
+    const r = await run("beta gamma", types);
+    expect(r.status).toBe("needs_review");
+    expect(r.reason).toBe("no_anchor");
+  });
+
+  it("classifies when an anchor term is present", async () => {
+    const types = [mk({ anchorTerms: ["alpha"] })];
+    const r = await run("alpha beta", types);
+    expect(r.documentTypeCode).toBe("X");
+  });
+
+  it("treats missing anchorTerms/excludeTerms as no restriction", async () => {
+    const r = await run("alpha beta gamma", [mk({})]);
+    expect(r.documentTypeCode).toBe("X");
+  });
+
+  it("does not auto-classify realistic look-alikes of income certificates", async () => {
+    const lookalikes = [
+      "SCHOLARSHIP APPLICATION FORM annual income family income rupees Attach income certificate issued by the Tahsildar",
+      "AFFIDAVIT notary annual income family income Certified that rupees",
+      "SALARY SLIP annual income revenue rupees Certified that",
+    ];
+    for (const text of lookalikes) {
+      const r = await run(text);
+      expect(r.status).toBe("needs_review");
+    }
+  });
+});
