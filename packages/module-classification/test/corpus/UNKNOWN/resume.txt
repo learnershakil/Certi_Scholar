@@ -1,0 +1,20 @@
+TEST STUDENT
+Software Engineer | Bangalore, India | test.student@example.com
+
+PROFESSIONAL SUMMARY
+Motivated full-stack developer specializing in TypeScript, Node.js, and cloud systems.
+Passionate about building scalable web architectures and distributed pipelines.
+
+EDUCATION
+Demo Institute of Technology
+Bachelor of Technology in Computer Science (2022 - 2026)
+
+TECHNICAL EXPERIENCE
+Backend Engineering Intern - CloudScale Inc (Summer 2025)
+- Designed BullMQ worker queues handling high throughput message streams.
+- Integrated Mongoose models with Redis caching layer to lower query latencies.
+
+CORE SKILLS
+Languages: TypeScript, JavaScript, Python, Go
+Frameworks: Express, React, Next.js, Vitest
+Databases: MongoDB, PostgreSQL, Redis

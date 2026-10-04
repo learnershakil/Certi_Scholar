@@ -11,7 +11,8 @@
     "seed": "tsx --env-file=.env src/scripts/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "corpus": "tsx test/corpus-report.ts"
   },
   "dependencies": {
     "bullmq": "^5.0.0",

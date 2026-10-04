@@ -1,0 +1,14 @@
+cEnTrAl   bOaRd  OF  sEcOnDaRy  EdUcAtIoN
+
+sTaTeMeNt    oF   mArKs   
+hIgHeR   sChOoL   eXaM
+
+rOlL   nO  1122334
+nAmE  tEsT   sTuDeNt
+
+sUbJeCt   mAtHeMaTiCs   mArKs   oBtAnEd  85   tOtAl   mArKs  100
+sUbJeCt   sCiEnCe       mArKs   oBtAnEd  90   tOtAl   mArKs  100
+
+pErCeNtAgE   87 5
+rEsUlT   pAsS
+gRaDe   A
