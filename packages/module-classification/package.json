@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check-types": "tsc --noEmit",
-    "corpus": "tsx test/corpus-report.ts"
+    "corpus": "tsx test/corpus-report.ts",
+    "enqueue": "tsx --env-file=.env src/scripts/enqueue.ts"
   },
   "dependencies": {
     "bullmq": "^5.0.0",
