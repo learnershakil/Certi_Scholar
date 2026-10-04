@@ -6,15 +6,22 @@ which M4 extraction profile should handle it. It never guesses: weak or ambiguou
 
 This says nothing about whether a document is genuine. It is a type assessment only.
 
-## Run it
+## Prerequisites and Running
+
+M3 requires **Bun**, **Node 24+**, **MongoDB**, and **Redis**. The easiest way to run the datastores locally is via Docker:
 
 ```sh
-bun install                                   # from the repo root
-cp packages/module-classification/.env.example packages/module-classification/.env
+bun install                                         # from the repo root, once
 cd packages/module-classification
-bun run dev                                   # Express on :4003 (needs MongoDB; Redis optional)
-bun run test
+cp .env.example .env                                # edit if needed (e.g. MONGO_PORT=27018 on Windows)
+docker compose up -d                                # starts MongoDB and Redis
+bun run dev                                         # Express on :4003
 ```
+
+- `bun run test`: Unit tests and corpus suite (no Docker needed).
+- `bun run test:integration`: Service, publisher, and router integration tests (requires Docker MongoDB & Redis).
+
+See [INTEGRATION.md](./INTEGRATION.md) for full module integration contracts, queue specifications, and setup details.
 
 With `REDIS_URL` unset the module runs HTTP-only and just logs its results.
 
