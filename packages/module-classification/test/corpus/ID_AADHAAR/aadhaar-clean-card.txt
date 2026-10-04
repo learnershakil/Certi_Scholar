@@ -1,0 +1,10 @@
+Government of India
+Unique Identification Authority of India
+Aadhaar - Mera Aadhaar, Meri Pehchan
+
+Name: Test Student
+DOB: 10/11/1999
+Gender: FEMALE
+
+4321 8765 2109
+UIDAI Help Center: 1947

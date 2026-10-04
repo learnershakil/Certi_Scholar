@@ -1,0 +1,3 @@
+test/corpus-private/
+.env
+*.zip

@@ -1,0 +1,80 @@
+@baseUrl = http://localhost:4003
+
+### 1. Health Check
+GET {{baseUrl}}/health
+
+### 2. Classify Document (Direct / Synchronous)
+POST {{baseUrl}}/internal/classify
+Content-Type: application/json
+
+{
+  "version": "1",
+  "documentId": "step3-doc1",
+  "text": "STATEMENT OF MARKS Roll No 12 Marks Obtained 441 Total Marks 500 Percentage 88.2"
+}
+
+### 3. Get Classification by Document ID
+GET {{baseUrl}}/documents/step3-doc1/classification
+
+### 4. Retry / Reprocess Classification
+POST {{baseUrl}}/documents/step3-doc2/classify
+Content-Type: application/json
+
+{
+  "text": "qwx zzk lorem ipsum",
+  "force": true
+}
+
+### 5. Manual Reviewer Override
+PATCH {{baseUrl}}/documents/step3-doc2/classification
+Content-Type: application/json
+
+{
+  "documentTypeCode": "INCOME_CERT",
+  "actorId": "tester",
+  "reason": "manual check"
+}
+
+### 6. List Document Types
+GET {{baseUrl}}/document-types
+
+### 7. Get Document Type by Code
+GET {{baseUrl}}/document-types/MARKSHEET
+
+### 8. Create Document Type
+POST {{baseUrl}}/document-types
+Content-Type: application/json
+
+{
+  "code": "CUSTOM_CERT",
+  "name": "Custom Certificate",
+  "keywords": [
+    { "term": "custom certificate", "weight": 3 },
+    { "term": "verification", "weight": 2 }
+  ],
+  "regexPatterns": [
+    { "pattern": "\\bCERT-[0-9]{5}\\b", "weight": 2 }
+  ],
+  "minConfidence": 0.4,
+  "extractionProfileId": null,
+  "active": true
+}
+
+### 9. Update Document Type
+PUT {{baseUrl}}/document-types/CUSTOM_CERT
+Content-Type: application/json
+
+{
+  "code": "CUSTOM_CERT",
+  "name": "Custom Certificate Updated",
+  "keywords": [
+    { "term": "custom certificate", "weight": 4 },
+    { "term": "verification", "weight": 2 }
+  ],
+  "regexPatterns": [
+    { "pattern": "\\bCERT-[0-9]{5}\\b", "weight": 2 }
+  ],
+  "minConfidence": 0.5,
+  "extractionProfileId": null,
+  "active": true
+}
