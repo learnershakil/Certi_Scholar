@@ -1,0 +1,24 @@
+{
+  "name": "@certischolar/worker",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "mongoose": "^8.5.2",
+    "bullmq": "^5.12.0",
+    "ioredis": "^5.4.1",
+    "dotenv": "^16.4.5",
+    "clamscan": "^2.4.0",
+    "@certischolar/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ts-node-dev": "^2.0.0",
+    "vitest": "^2.0.5"
+  }
+}
