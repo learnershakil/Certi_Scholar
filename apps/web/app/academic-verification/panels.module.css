@@ -1,0 +1,468 @@
+/* Panels: Findings, Reconciliation, Calculation Inspector, History */
+
+/* ---------- Awaiting state ---------- */
+
+.awaitingContainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--wb-neutral-muted);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius);
+}
+
+.awaitingIcon {
+  width: 20px;
+  height: 20px;
+  color: var(--wb-indigo);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.awaitingTitle {
+  font-weight: 700;
+  color: var(--wb-navy);
+  font-size: 14px;
+}
+
+.awaitingDesc {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--wb-text-muted);
+}
+
+.placeholder {
+  padding: 12px 16px;
+  background: var(--wb-neutral-muted);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius-sm);
+  color: var(--wb-text-muted);
+  font-size: 13px;
+}
+
+/* ---------- Consistency Verdict Banners ---------- */
+
+.verdictConsistent {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--wb-ok-soft);
+  border: 1px solid var(--wb-ok-border);
+  border-left-width: 4px;
+  border-left-color: var(--wb-ok);
+  border-radius: var(--wb-radius);
+  margin-bottom: 20px;
+}
+
+.verdictInconsistent {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--wb-bad-soft);
+  border: 1px solid var(--wb-bad-border);
+  border-left-width: 4px;
+  border-left-color: var(--wb-bad);
+  border-radius: var(--wb-radius);
+  margin-bottom: 20px;
+}
+
+.verdictNeedsReview {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--wb-warn-soft);
+  border: 1px solid var(--wb-warn-border);
+  border-left-width: 4px;
+  border-left-color: var(--wb-warn);
+  border-radius: var(--wb-radius);
+  margin-bottom: 20px;
+}
+
+.verdictIconWrap {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.verdictIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.verdictConsistent .verdictIcon {
+  color: var(--wb-ok);
+}
+
+.verdictInconsistent .verdictIcon {
+  color: var(--wb-bad);
+}
+
+.verdictNeedsReview .verdictIcon {
+  color: var(--wb-warn);
+}
+
+.verdictTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--wb-navy);
+  margin-bottom: 4px;
+}
+
+.verdictDesc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--wb-text-secondary);
+}
+
+/* ---------- Findings Overview Pills ---------- */
+
+.findingsPillRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 700px) {
+  .findingsPillRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.findingsPill {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--wb-neutral-muted);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius);
+}
+
+.pillLabel {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wb-text-muted);
+}
+
+.pillValue {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wb-navy);
+}
+
+/* ---------- Engine Issues Section ---------- */
+
+.issuesSection {
+  margin-bottom: 20px;
+}
+
+.issuesHeading {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wb-text-muted);
+  margin-bottom: 8px;
+}
+
+.noIssuesNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--wb-ok-soft);
+  border: 1px solid var(--wb-ok-border);
+  border-radius: var(--wb-radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-ok-dark);
+}
+
+.noIssuesIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.reviewNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--wb-warn-soft);
+  border: 1px solid var(--wb-warn-border);
+  border-radius: var(--wb-radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-warn-dark);
+}
+
+.reviewNoticeIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--wb-warn);
+}
+
+.issueList {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.issueItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--wb-bad-soft);
+  border: 1px solid var(--wb-bad-border);
+  border-radius: var(--wb-radius-sm);
+  color: var(--wb-bad-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.issueItemIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ---------- Context Note ---------- */
+
+.contextNote {
+  padding: 14px 18px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--wb-radius);
+  margin-bottom: 16px;
+}
+
+.contextNoteHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.contextNoteIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--wb-indigo);
+}
+
+.contextNoteTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wb-navy);
+}
+
+.contextNoteBody {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--wb-text-secondary);
+}
+
+.auditDisclaimer {
+  font-size: 12px;
+  color: var(--wb-text-muted);
+  line-height: 1.4;
+}
+
+/* ---------- Reconciliation Header ---------- */
+
+.headerStatusWrap {
+  display: flex;
+  align-items: center;
+}
+
+.metricTitle {
+  font-weight: 700;
+  color: var(--wb-navy);
+}
+
+.metricDesc {
+  font-size: 12px;
+  color: var(--wb-text-muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+/* ---------- Calculation Inspector Accordion ---------- */
+
+.inspectorAccordion {
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius);
+  background: var(--wb-surface);
+  overflow: hidden;
+}
+
+.inspectorToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 18px;
+  background: var(--wb-neutral-muted);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.inspectorToggle:hover {
+  background: #e2e8f0;
+}
+
+.inspectorToggleLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inspectorToggleIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--wb-indigo);
+}
+
+.inspectorToggleText {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--wb-navy);
+}
+
+.detailsBody {
+  display: grid;
+  gap: 20px;
+  padding: 18px;
+  background: #ffffff;
+  border-top: 1px solid var(--wb-border);
+}
+
+.group {
+  display: grid;
+  gap: 10px;
+}
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.groupTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wb-navy);
+}
+
+.chipEngine {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--wb-navy);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.chipExplanatory {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--wb-neutral-muted);
+  color: var(--wb-text-muted);
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.traceStack {
+  display: grid;
+  gap: 8px;
+}
+
+.traceRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--wb-radius-sm);
+  font-size: 13px;
+}
+
+.traceName {
+  font-weight: 600;
+  color: var(--wb-navy);
+  min-width: 170px;
+}
+
+.traceCalc {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12.5px;
+  color: #1e3a8a;
+  word-break: break-all;
+}
+
+.notesList {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+  font-size: 12.5px;
+  color: var(--wb-text-secondary);
+  line-height: 1.45;
+}
+
+.notesList code {
+  padding: 1px 4px;
+  background: var(--wb-neutral-muted);
+  border: 1px solid var(--wb-border);
+  border-radius: 3px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11.5px;
+  color: var(--wb-navy);
+}
+
+/* ---------- Empty History ---------- */
+
+.emptyHistoryWrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+  background: var(--wb-neutral-muted);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius);
+}
+
+.emptyHistoryIcon {
+  width: 24px;
+  height: 24px;
+  color: var(--wb-text-muted);
+  flex-shrink: 0;
+}
+
+.emptyHistory {
+  color: var(--wb-text-muted);
+  font-size: 13.5px;
+  margin: 0;
+}
