@@ -167,13 +167,30 @@ export default function DocumentPage() {
         subtitle={
           <span className="row">
             {docType(d.documentType)}
-            {d.classification?.confidence !== undefined && <span className="faint">· classification {pct(d.classification.confidence)}</span>}
+            {d.classification?.confidence !== undefined && (
+              <span className="faint">
+                · {d.classification.source === 'officer' ? 'type set by officer' : d.classification.source === 'declared' ? 'type declared by student' : `classification ${pct(d.classification.confidence)}`}
+                {d.profileFormat ? ` · ${d.profileFormat} format` : ''}
+              </span>
+            )}
             <StatusPill status={d.status} />
           </span>
         }
         actions={
           editable && (
             <>
+              {!ACTIVE.includes(d.status) && (
+                <>
+                  <select className="select" style={{ width: 200 }} value={newType} onChange={(e) => setNewType(e.target.value)} aria-label="Change document type">
+                    <option value="marksheet">Statement of marks</option>
+                    <option value="income_certificate">Income certificate</option>
+                    <option value="identity">Identity document</option>
+                  </select>
+                  <button className="btn" disabled={newType === d.documentType} onClick={() => run(() => post(`/documents/${id}/type`, { documentType: newType, reason: 'Set by officer after visual inspection' }))}>
+                    Change type
+                  </button>
+                </>
+              )}
               <button className="btn" onClick={() => run(() => post(`/documents/${id}/reprocess`, { from: d.status === 'failed' ? 'ocr' : 'analyse' }))}>
                 {d.status === 'failed' ? 'Retry processing' : 'Reprocess'}
               </button>

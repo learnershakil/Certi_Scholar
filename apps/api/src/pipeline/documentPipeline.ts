@@ -14,7 +14,7 @@ import { getSettings } from '../models/system.js';
 import { blobStore } from '../lib/storage.js';
 import { audit, notify, timeline } from '../lib/events.js';
 import { ocrClient, OcrServiceError, type OcrResult } from '../ocr/client.js';
-import { classify, extractFields, fullText, type Profile } from '../domain/extraction.js';
+import { classify, fullText, pickBestProfile, type Profile } from '../domain/extraction.js';
 import { runConsistencyChecks } from '../domain/consistency.js';
 import { jobQueue, PermanentJobError, type JobContext } from './queue.js';
 
@@ -84,8 +84,20 @@ export async function runAnalyse(documentId: string) {
     if (doc.classification?.overriddenBy) return; // an officer has set the type; respect it
     const types = await DocumentTypeModel.find({ active: true }).lean();
     const result = classify(fullText(ocr), types, settings.classificationThreshold);
-    doc.documentType = result.documentType;
-    doc.classification = { confidence: result.confidence, scores: result.scores };
+    let documentType = result.documentType;
+    let source: 'keywords' | 'declared' = 'keywords';
+    // The student's choice settles an inconclusive result, but only if the text shows some sign of that type.
+    // It never overrides a confident classification, and every extracted field is still confidence-checked.
+    const declared = doc.declaredType;
+    if (!documentType && declared && (result.scores[declared] ?? 0) > 0) {
+      documentType = declared;
+      source = 'declared';
+    }
+    doc.documentType = documentType;
+    doc.classification = { confidence: result.confidence, scores: result.scores, source };
+    if (declared && result.documentType && declared !== result.documentType) {
+      await timeline({ document: doc._id, stage: 'classify', status: 'note', message: `Student declared ${declared}; the text reads as ${result.documentType}` });
+    }
   });
 
   if (!doc.documentType) {
@@ -97,9 +109,12 @@ export async function runAnalyse(documentId: string) {
   }
 
   await stage(doc, 'extract', async () => {
-    const profile = await ExtractionProfileModel.findOne({ documentType: doc.documentType, active: true }).sort({ version: -1 }).lean();
-    if (!profile) throw new PermanentJobError(`No active extraction profile for ${doc.documentType}`);
-    const values = extractFields(ocr, profile as unknown as Profile, settings.defaultConfidenceThreshold);
+    // The newest active version of each format for this type; the layout that fits best wins.
+    const active = await ExtractionProfileModel.find({ documentType: doc.documentType, active: true }).sort({ version: -1 }).lean();
+    const newestPerFormat = active.filter((p, i) => active.findIndex((q) => q.format === p.format) === i);
+    const best = pickBestProfile(ocr, newestPerFormat as unknown as Array<Profile & { format: string; version: number }>, settings.defaultConfidenceThreshold);
+    if (!best) throw new PermanentJobError(`No active extraction profile for ${doc.documentType}`);
+    const { profile, values } = best;
     // Idempotent reprocessing: machine output is replaced; officer corrections are re-applied on top.
     const corrections = await CorrectionModel.find({ document: doc._id }).sort({ createdAt: 1 }).lean();
     const latest = new Map(corrections.map((c) => [c.fieldKey, c.newValue]));
@@ -109,7 +124,9 @@ export async function runAnalyse(documentId: string) {
         latest.has(v.key) ? { ...v, document: doc._id, value: latest.get(v.key), status: 'corrected' } : { ...v, document: doc._id },
       ),
     );
+    doc.profileFormat = profile.format;
     doc.profileVersion = profile.version;
+    await timeline({ document: doc._id, stage: 'extract', status: 'profile', message: `${profile.format} v${profile.version}: ${Math.round(best.coverage * 100)}% of required fields found` });
   });
 
   await stage(doc, 'consistency', () => recomputeConsistency(doc._id));

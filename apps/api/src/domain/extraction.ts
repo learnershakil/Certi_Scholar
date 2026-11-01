@@ -14,8 +14,15 @@ export interface ProfileField {
 }
 
 export interface Profile {
+  format?: string | null;
+  version?: number | null;
   fields: ProfileField[];
-  table?: { key?: string | null; label?: string | null; rowPattern?: string | null; columns: Array<{ key?: string | null; kind?: string | null }> } | null;
+  table?: {
+    key?: string | null;
+    label?: string | null;
+    rowPattern?: string | null;
+    columns: Array<{ key?: string | null; kind?: string | null; fixed?: string | null }>;
+  } | null;
 }
 
 export interface ExtractedValue {
@@ -44,7 +51,9 @@ export function classify(text: string, types: DocumentTypeDef[], threshold: numb
   const scores: Record<string, number> = {};
   for (const t of types) {
     const total = t.keywords.reduce((s, k) => s + (k.weight ?? 1), 0);
-    const hit = t.keywords.filter((k) => k.term && haystack.includes(k.term.toLowerCase())).reduce((s, k) => s + (k.weight ?? 1), 0);
+    // A term may list synonyms separated by `|` ("roll number|unique id"): any one of them counts once.
+    const found = (term: string) => term.toLowerCase().split('|').some((alt) => haystack.includes(alt.trim()));
+    const hit = t.keywords.filter((k) => k.term && found(k.term)).reduce((s, k) => s + (k.weight ?? 1), 0);
     scores[t.code] = total ? Math.round((hit / total) * 1000) / 1000 : 0;
   }
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
@@ -61,7 +70,7 @@ export function isValidKind(kind: FieldKind | string, value: string): boolean {
     case 'number':
       return /^(?:₹|Rs\.?)?\s*\d[\d,]*(?:\.\d+)?%?$/i.test(v);
     case 'date': {
-      const m = v.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
+      const m = v.match(/^(\d{2})[/.-](\d{2})[/.-](\d{4})$/);
       if (!m) return false;
       const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
       return d.getDate() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1;
@@ -156,23 +165,59 @@ export function extractFields(ocr: OcrResult, profile: Profile, defaultThreshold
   const t = profile.table;
   if (t?.rowPattern && t.key) {
     const re = new RegExp(t.rowPattern, 'id');
+    const matched = lines.map((line) => re.exec(line.text));
+    const first = matched.findIndex(Boolean);
+    const last = matched.findLastIndex(Boolean);
     let row = 0;
-    for (const line of lines) {
-      const m = re.exec(line.text);
-      if (!m?.indices) continue;
-      t.columns.forEach((c, ci) => {
-        const idx = m.indices![ci + 1];
-        const value = m[ci + 1];
-        out.push(
-          build(
-            { key: `${t.key}.${row}.${c.key}`, label: `${t.label ?? t.key} ${row + 1} — ${c.key}`, kind: (c.kind as FieldKind) ?? 'text', required: true, group: t.key!, row },
-            defaultThreshold,
-            idx && value ? { value, page: line.page, ...locate(line, idx[0], idx[1]) } : undefined,
-          ),
-        );
-      });
+    for (let i = first; first >= 0 && i <= last; i++) {
+      const line = lines[i];
+      const m = matched[i];
+      // A line inside the table that OCR could barely read may be a whole subject: it becomes an empty row
+      // for the officer to fill, instead of being dropped from the totals without anyone noticing.
+      const unreadable = !m && line.words.length > 0 && line.words.reduce((s, w) => s + w.conf, 0) / line.words.length < UNREADABLE_LINE;
+      if (!m && !unreadable) continue;
+      let group = 1;
+      for (const c of t.columns) {
+        const meta = { key: `${t.key}.${row}.${c.key}`, label: `${t.label ?? t.key} ${row + 1} — ${c.key}`, kind: (c.kind as FieldKind) ?? 'text', required: true, group: t.key!, row };
+        if (c.fixed) {
+          out.push(build({ ...meta, label: `${meta.label} (set by format)` }, defaultThreshold, { value: c.fixed, page: line.page, conf: 1 }));
+          continue;
+        }
+        const idx = m?.indices?.[group];
+        const value = m?.[group];
+        group++;
+        const hit = idx && value ? { value, page: line.page, ...locate(line, idx[0], idx[1]) } : undefined;
+        const field = build(meta, defaultThreshold, hit);
+        // Point the officer at the unreadable line even though no value was read from it.
+        if (unreadable) Object.assign(field, { page: line.page, bbox: locate(line, 0, line.text.length).bbox, label: `${meta.label} (line unreadable)` });
+        out.push(field);
+      }
       row++;
     }
   }
   return out;
+}
+
+/** Mean word confidence below which a line inside a table is treated as an unreadable row. */
+const UNREADABLE_LINE = 0.5;
+
+/**
+ * A document type can have several layouts. Every active format is tried and the one that finds the
+ * largest share of its required fields wins; ties go to the higher average confidence.
+ */
+export function pickBestProfile<P extends Profile>(ocr: OcrResult, profiles: P[], defaultThreshold: number) {
+  let best: { profile: P; values: ExtractedValue[]; coverage: number; meanConfidence: number } | undefined;
+  for (const profile of profiles) {
+    const values = extractFields(ocr, profile, defaultThreshold);
+    const required = profile.fields.filter((f) => f.required);
+    const found = required.filter((f) => values.some((v) => v.key === f.key && v.value !== null)).length;
+    const tableFound = values.some((v) => v.group && v.value !== null && !v.label.endsWith('(set by format)')) ? 1 : 0;
+    const coverage = (found + tableFound) / (required.length + (profile.table?.rowPattern ? 1 : 0) || 1);
+    const read = values.filter((v) => v.value !== null);
+    const meanConfidence = read.length ? read.reduce((s, v) => s + v.confidence.overall, 0) / read.length : 0;
+    if (!best || coverage > best.coverage || (coverage === best.coverage && meanConfidence > best.meanConfidence)) {
+      best = { profile, values, coverage: Math.round(coverage * 1000) / 1000, meanConfidence };
+    }
+  }
+  return best;
 }

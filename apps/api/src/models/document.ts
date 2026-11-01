@@ -51,6 +51,9 @@ const ProfileFieldSchema = new Schema(
 const ExtractionProfileSchema = new Schema(
   {
     documentType: { type: String, required: true, index: true },
+    /** One document type can have several real-world layouts (e.g. a state board and ICSE marksheet). */
+    format: { type: String, required: true, default: 'standard' },
+    name: String,
     version: { type: Number, required: true },
     active: { type: Boolean, default: true },
     fields: [ProfileFieldSchema],
@@ -59,13 +62,14 @@ const ExtractionProfileSchema = new Schema(
       label: String,
       /** Regex with one capture group per column. */
       rowPattern: String,
-      columns: [{ _id: false, key: String, kind: { type: String, enum: ['text', 'number'] } }],
+      /** `fixed` = a value set by the format itself (e.g. every ICSE subject is out of 100), not read by OCR. */
+      columns: [{ _id: false, key: String, kind: { type: String, enum: ['text', 'number'] }, fixed: String }],
     },
     createdBy: { type: ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
-ExtractionProfileSchema.index({ documentType: 1, version: -1 }, { unique: true });
+ExtractionProfileSchema.index({ documentType: 1, format: 1, version: -1 }, { unique: true });
 
 const StageSchema = new Schema(
   {
@@ -91,8 +95,14 @@ const DocumentSchema = new Schema(
     status: { type: String, enum: DOCUMENT_STATUSES, default: 'queued', index: true },
     stages: [StageSchema],
     documentType: { type: String, default: null },
-    declaredType: String,
-    classification: { confidence: Number, scores: Mixed, overriddenBy: { type: ObjectId, ref: 'User' } },
+    declaredType: String, // chosen by the student at upload; used only when keywords are not conclusive
+    classification: {
+      confidence: Number,
+      scores: Mixed,
+      source: { type: String, enum: ['keywords', 'declared', 'officer'] },
+      overriddenBy: { type: ObjectId, ref: 'User' },
+    },
+    profileFormat: String,
     profileVersion: Number,
     ocr: { type: Mixed, select: false },
     ocrProvider: String,

@@ -23,11 +23,26 @@ export const toNumber = (v: string | null | undefined): number | null => {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function subjectRows(fields: FieldValues) {
-  const rows: Array<{ name: string; max: number | null; obtained: number | null }> = [];
+  const rows: Array<{ name: string; max: number | null; obtained: number | null; words?: string | null }> = [];
   for (let i = 0; fields[`subjects.${i}.name`] !== undefined; i++) {
-    rows.push({ name: fields[`subjects.${i}.name`] ?? `Subject ${i + 1}`, max: toNumber(fields[`subjects.${i}.max`]), obtained: toNumber(fields[`subjects.${i}.obtained`]) });
+    rows.push({
+      name: fields[`subjects.${i}.name`] ?? `Subject ${i + 1}`,
+      max: toNumber(fields[`subjects.${i}.max`]),
+      obtained: toNumber(fields[`subjects.${i}.obtained`]),
+      words: fields[`subjects.${i}.words`],
+    });
   }
   return rows;
+}
+
+const DIGIT_WORDS: Record<string, string> = { ZERO: '0', NIL: '0', ONE: '1', TWO: '2', THREE: '3', FOUR: '4', FIVE: '5', SIX: '6', SEVEN: '7', EIGHT: '8', NINE: '9' };
+
+/** Marks written digit by digit in words, as boards print them ("EIGHT EIGHT" = 88, "ONE ZERO ZERO" or "HUNDRED" = 100). */
+export function marksFromWords(words: string): number | null {
+  const tokens = words.toUpperCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 1 && tokens[0] === 'HUNDRED') return 100;
+  if (!tokens.length || tokens.some((t) => !(t in DIGIT_WORDS))) return null;
+  return Number(tokens.map((t) => DIGIT_WORDS[t]).join(''));
 }
 
 export function checkMarksheet(fields: FieldValues, tolerance: number): CheckResult[] {
@@ -85,11 +100,23 @@ export function checkMarksheet(fields: FieldValues, tolerance: number): CheckRes
               : `Recomputed ${recomputed}% (${sumObtained}/${sumMax}) disagrees with printed ${printedPct}%`,
         },
   );
+  const worded = rows.filter((r) => r.words);
+  if (worded.length) {
+    const mismatched = worded.filter((r) => marksFromWords(r.words!) !== r.obtained);
+    checks.push({
+      code: 'marks_words_match_figures',
+      label: 'Marks in words agree with marks in figures',
+      status: mismatched.length ? 'fail' : 'pass',
+      message: mismatched.length
+        ? `Words and figures disagree for: ${mismatched.map((r) => `${r.name} (${r.obtained} vs "${r.words}")`).join(', ')}`
+        : `All ${worded.length} subjects agree`,
+    });
+  }
   return checks;
 }
 
 const parseDate = (v: string | null | undefined) => {
-  const m = v?.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
+  const m = v?.match(/^(\d{2})[/.-](\d{2})[/.-](\d{4})$/);
   return m ? new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]))) : null;
 };
 

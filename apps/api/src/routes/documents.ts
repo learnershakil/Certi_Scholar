@@ -47,6 +47,8 @@ documents.post('/', requireRole('student'), upload.single('file'), async (req, r
     throw new HttpError(422, 'malware_detected', 'The file failed the security scan and was not stored');
   }
 
+  const declaredType = typeof req.body?.declaredType === 'string' && req.body.declaredType ? req.body.declaredType : undefined;
+  if (declaredType && !(await DocumentTypeModel.exists({ code: declaredType, active: true }))) throw badRequest('Unknown document type');
   const sha256 = createHash('sha256').update(file.buffer).digest('hex');
   const settings = await getSettings();
   const doc = await DocumentModel.create({
@@ -56,7 +58,7 @@ documents.post('/', requireRole('student'), upload.single('file'), async (req, r
     size: file.size,
     sha256,
     storageKey: await blobStore().put(file.buffer),
-    declaredType: typeof req.body?.declaredType === 'string' ? req.body.declaredType : undefined,
+    declaredType,
     stages: STAGES.map((name) => (name === 'scan' ? { name, status: 'done', attempts: 1, startedAt: new Date(), finishedAt: new Date() } : { name })),
     retainUntil: new Date(Date.now() + settings.retentionDays * 86_400_000),
   });
@@ -75,6 +77,8 @@ const summary = (d: InstanceType<typeof DocumentModel>) => ({
   status: d.status,
   documentType: d.documentType,
   classification: d.classification,
+  declaredType: d.declaredType,
+  profileFormat: d.profileFormat,
   stages: d.stages,
   verification: d.verification,
   authenticity: authenticityStatement((d.verification?.status ?? 'not_verified') as VerificationStatus),
@@ -218,7 +222,7 @@ documents.post('/:id/type', requireRole('verifier', 'admin'), async (req, res) =
   if (!(await DocumentTypeModel.exists({ code: body.documentType, active: true }))) throw badRequest('Unknown document type');
   const previous = doc.documentType;
   doc.documentType = body.documentType;
-  doc.classification = { ...(doc.classification ?? {}), overriddenBy: me.id as never };
+  doc.classification = { ...(doc.classification ?? {}), source: 'officer', overriddenBy: me.id as never };
   await doc.save();
   await audit(me, 'document.type_set', 'Document', doc._id, { previous, next: body.documentType, reason: body.reason }, req.ip);
   await jobQueue().add('document.analyse', { documentId: doc.id }, { jobId: `analyse:${doc.id}:${Date.now()}` });

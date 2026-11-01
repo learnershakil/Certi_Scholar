@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkIdentity, checkIncomeCertificate, checkMarksheet, runConsistencyChecks, verhoeffValid } from '../src/domain/consistency.js';
+import { checkIdentity, checkIncomeCertificate, checkMarksheet, marksFromWords, runConsistencyChecks, verhoeffValid } from '../src/domain/consistency.js';
 import { deriveFacts, type DocumentFacts } from '../src/domain/facts.js';
 
 const marks = (overrides: Record<string, string | null> = {}) => ({
@@ -106,5 +106,40 @@ describe('fact derivation', () => {
     expect(facts['applicant.category']).toBe('SC');
     expect(provenance['applicant.gender'].source).toMatch(/self-declared/);
     expect(facts['documents.reviewComplete']).toBeUndefined();
+  });
+});
+
+describe('ICSE marksheets (no printed total, marks in words)', () => {
+  const icse = (over: Record<string, string | null> = {}) => ({
+    'subjects.0.name': 'ENGLISH', 'subjects.0.obtained': '88', 'subjects.0.words': 'EIGHT EIGHT', 'subjects.0.max': '100',
+    'subjects.1.name': 'SCIENCE', 'subjects.1.obtained': '87', 'subjects.1.words': 'EIGHT SEVEN', 'subjects.1.max': '100',
+    ...over,
+  });
+
+  it('converts marks written in words', () => {
+    expect(marksFromWords('EIGHT EIGHT')).toBe(88);
+    expect(marksFromWords('one zero zero')).toBe(100);
+    expect(marksFromWords('HUNDRED')).toBe(100);
+    expect(marksFromWords('EIGHTY')).toBeNull();
+  });
+
+  it('recomputes the aggregate when none is printed and checks words against figures', () => {
+    const c = Object.fromEntries(checkMarksheet(icse(), 0.05).map((x) => [x.code, x]));
+    expect(c.percentage_matches_marks).toMatchObject({ status: 'not_applicable', expected: 87.5 });
+    expect(c.total_matches_marks.status).toBe('not_applicable');
+    expect(c.marks_words_match_figures.status).toBe('pass');
+  });
+
+  it('flags marks whose words disagree with the figures', () => {
+    const c = checkMarksheet(icse({ 'subjects.1.obtained': '81' }), 0.05).find((x) => x.code === 'marks_words_match_figures');
+    expect(c).toMatchObject({ status: 'fail', message: expect.stringMatching(/SCIENCE \(81 vs "EIGHT SEVEN"\)/) });
+  });
+
+  it('waits for an unreadable row to be reviewed before recomputing', () => {
+    expect(checkMarksheet(icse({ 'subjects.1.obtained': null }), 0.05).every((x) => x.status === 'not_applicable')).toBe(true);
+  });
+
+  it('accepts dotted dates', () => {
+    expect(checkIdentity({ id_number: '2345 6789 0124', date_of_birth: '14.08.2007' }, new Date('2026-11-04'))[1].status).toBe('pass');
   });
 });

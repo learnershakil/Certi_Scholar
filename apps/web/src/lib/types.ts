@@ -25,7 +25,9 @@ export interface DocumentSummary {
   mime: string;
   status: string;
   documentType: string | null;
-  classification?: { confidence?: number };
+  classification?: { confidence?: number; source?: 'keywords' | 'declared' | 'officer' };
+  declaredType?: string;
+  profileFormat?: string;
   stages: Stage[];
   verification: { status: string; providerLabel?: string; simulated?: boolean; checkedAt?: string };
   authenticity: Authenticity;

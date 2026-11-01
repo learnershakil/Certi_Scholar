@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, extractFields, fullText, isValidKind, type Profile } from '../src/domain/extraction.js';
+import { classify, extractFields, fullText, isValidKind, pickBestProfile, type Profile } from '../src/domain/extraction.js';
 import { DOCUMENT_TYPES, EXTRACTION_PROFILES } from '../src/seedData.js';
 import { fakeOcr, IDENTITY, INCOME, MARKSHEET } from './helpers.js';
 
@@ -109,4 +109,72 @@ describe('type checks', () => {
     ['id', 'INC/2026/1', true],
     ['text', '1234', false],
   ])('%s %s → %s', (kind, value, ok) => expect(isValidKind(kind, value)).toBe(ok));
+});
+
+describe('ICSE Class X format (real layout, fictional candidate)', () => {
+  // Lines and confidences mirror what Tesseract returned for a phone photo of an ICSE statement of marks.
+  const ICSE = [
+    'COUNCIL FOR THE INDIAN SCHOOL CERTIFICATE EXAMINATIONS, NEW DELHI',
+    'INDIAN CERTIFICATE OF SECONDARY EDUCATION (CLASS - X) - YEAR 2022',
+    'No. TU 10012345',
+    'STATEMENT OF MARKS',
+    'Name RIYA SEN a',
+    "of ST. MARY'S SCHOOL, PUNE r",
+    'Unique ID 7654321 |',
+    'SUBJECTS PERCENTAGE MARKS',
+    'ENGLISH 88 EIGHT EIGHT',
+    'ENGLISH LANGUAGE',
+    'FEE Ee VE JPG)',
+    'HISTORY, CIVICS & GEOGRAPHY 92 NINE TWO',
+    'HISTORY & CIVICS 098',
+    'SCIENCE 87 EIGHT SEVEN',
+    'PHYSICS 083',
+    'COMPUTER APPLICATIONS 099 99 NINE NINE',
+    'Internal Assessment GRADE',
+    'atthe time of (in figures) 21.02.2006 :',
+    'RESULT- PASS CERTIFICATE AWARDED',
+  ];
+  const conf = (w: string) => (['FEE', 'Ee', 'VE', 'JPG)'].includes(w) ? 0.15 : ['a', 'r', '|'].includes(w) ? 0.5 : w === '7654321' ? 0.41 : 0.95);
+  const ocr = fakeOcr(ICSE, conf);
+  const profiles = EXTRACTION_PROFILES.filter((p) => p.documentType === 'marksheet') as unknown as Array<Profile & { format: string }>;
+  const icseFields = () => byKey(pickBestProfile(ocr, profiles, 0.85)!.values);
+
+  it('classifies it as a marksheet through board synonyms', () => {
+    expect(classify(fullText(ocr), DOCUMENT_TYPES, 0.6)).toMatchObject({ documentType: 'marksheet', confidence: 1 });
+  });
+
+  it('picks the ICSE format for ICSE, and the standard format for the standard sample', () => {
+    expect(pickBestProfile(ocr, profiles, 0.85)!.profile.format).toBe('icse-class-x');
+    expect(pickBestProfile(fakeOcr(MARKSHEET), profiles, 0.85)!.profile.format).toBe('standard');
+  });
+
+  it('reads the candidate fields and keeps OCR noise out of the name', () => {
+    const f = icseFields();
+    expect(f.student_name).toMatchObject({ value: 'RIYA SEN', status: 'auto_accepted' });
+    expect(f.school.value).toBe("ST. MARY'S SCHOOL, PUNE");
+    expect(f.exam_year.value).toBe('2022');
+    expect(f.certificate_number.value).toBe('TU 10012345');
+    expect(f.result.value).toBe('PASS');
+    expect(f.date_of_birth).toMatchObject({ value: '21.02.2006', confidence: { pattern: 1 } });
+    expect(f.roll_number).toMatchObject({ value: '7654321', status: 'needs_review' }); // read at 41% confidence
+  });
+
+  it('reads subject rows, skips paper-level lines and applies the format maximum', () => {
+    const f = icseFields();
+    expect(f['subjects.0.name'].value).toBe('ENGLISH');
+    expect(f['subjects.0.obtained'].value).toBe('88');
+    expect(f['subjects.0.words'].value).toBe('EIGHT EIGHT');
+    expect(f['subjects.0.max']).toMatchObject({ value: '100', status: 'auto_accepted' });
+    expect(f['subjects.2.name'].value).toBe('HISTORY, CIVICS & GEOGRAPHY');
+    expect(f['subjects.4.obtained'].value).toBe('99'); // the 099 paper mark before it is not the subject mark
+    expect(f['subjects.5.name']).toBeUndefined();
+  });
+
+  it('turns an unreadable line inside the table into an empty row for the officer', () => {
+    const f = icseFields();
+    expect(f['subjects.1.name']).toMatchObject({ value: null, status: 'needs_review' });
+    expect(f['subjects.1.obtained']).toMatchObject({ value: null, status: 'needs_review' });
+    expect(f['subjects.1.name'].label).toMatch(/line unreadable/);
+    expect(f['subjects.1.name'].bbox).toHaveLength(4); // points the officer at the line on the image
+  });
 });

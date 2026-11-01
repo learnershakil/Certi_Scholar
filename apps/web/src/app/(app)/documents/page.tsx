@@ -17,6 +17,7 @@ function Upload({ onDone }: { onDone: () => void }) {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [declaredType, setDeclaredType] = useState('');
 
   const send = async (file?: File) => {
     if (!file) return;
@@ -24,6 +25,7 @@ function Upload({ onDone }: { onDone: () => void }) {
     setError(undefined);
     const form = new FormData();
     form.append('file', file);
+    if (declaredType) form.append('declaredType', declaredType);
     try {
       const res = await fetch('/api/v1/documents', { method: 'POST', body: form, credentials: 'same-origin' });
       if (!res.ok) {
@@ -49,9 +51,17 @@ function Upload({ onDone }: { onDone: () => void }) {
       <p style={{ margin: '0 0 8px' }}>Drop a marksheet, income certificate or identity document here</p>
       <p className="small muted" style={{ margin: '0 0 12px' }}>PDF, PNG or JPEG · up to 10 MB · scanned for malware and stored encrypted</p>
       <input ref={input} type="file" accept="application/pdf,image/png,image/jpeg" hidden onChange={(e) => send(e.target.files?.[0])} aria-label="Choose document" />
-      <button className="btn btn-primary" disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? 'Uploading…' : 'Choose file'}
-      </button>
+      <div className="row" style={{ justifyContent: 'center' }}>
+        <select className="select" style={{ width: 240 }} value={declaredType} onChange={(e) => setDeclaredType(e.target.value)} aria-label="Document type">
+          <option value="">Detect type automatically</option>
+          <option value="marksheet">Statement of marks</option>
+          <option value="income_certificate">Income certificate</option>
+          <option value="identity">Identity document</option>
+        </select>
+        <button className="btn btn-primary" disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? 'Uploading…' : 'Choose file'}
+        </button>
+      </div>
       {error && <div style={{ marginTop: 12 }}><ErrorText error={error} /></div>}
     </div>
   );

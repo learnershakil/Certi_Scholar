@@ -30,7 +30,7 @@ This starts mongo, redis, clamav, ocr (with Tesseract), api, worker, worker-ocr 
 
 ### Walkthrough
 
-1. **Student**: upload `marksheet.png`, `income_certificate.pdf` and `identity.pdf`. Watch the stages run, then open a document to see the extracted fields over the image.
+1. **Student**: upload `marksheet.png`, `income_certificate.pdf` and `identity.pdf` (optionally choosing the type; "Detect automatically" is the default). ICSE Class X marksheets are read with their own format profile. Watch the stages run, then open a document to see the extracted fields over the image.
 2. **Verifier**: in the Review queue, claim a case. Low-confidence fields are flagged in red; click one to highlight its region on the image. Confirm or correct it (a reason is required), complete the review, request verification (labelled **SIMULATED** in dev), and record a manual confirmation from the issuing authority.
 3. **Student**: apply for *Merit-cum-Means Scholarship 2026* with the three documents.
 4. **Officer**: open the application. You see every condition with its result, the source of each fact, and what has been established about each document. Award it, then export the award list from Reports.
