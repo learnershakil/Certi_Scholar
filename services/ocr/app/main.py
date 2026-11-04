@@ -18,7 +18,7 @@ log = logging.getLogger("ocr")
 MAX_BYTES = int(os.getenv("OCR_MAX_BYTES", str(10 * 1024 * 1024)))
 PROVIDERS: dict[str, OcrProvider] = {"tesseract": TesseractProvider(), "google_docai": GoogleDocumentAIProvider()}
 
-app = FastAPI(title="CertiScholar OCR service", version=CONTRACT_VERSION)
+app = FastAPI(title=os.getenv("OCR_SERVICE_TITLE", "OCR service"), version=CONTRACT_VERSION)
 
 
 def active_provider() -> OcrProvider:

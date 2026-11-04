@@ -1,11 +1,17 @@
 import mongoose from 'mongoose';
-import { config, isProduction } from './config.js';
+import { config } from './config.js';
 import { logger } from './lib/events.js';
-import { seedDemo, seedReferenceData } from './seedData.js';
+import { seedDemo, seedReferenceData, seedScholarships } from './seedData.js';
 
-await mongoose.connect(config().MONGO_URL);
-// Production gets reference data only (document types, profiles); demo users and the simulated provider never.
-if (isProduction()) await seedReferenceData();
-else await seedDemo();
-logger.info('seed complete');
+const c = config();
+await mongoose.connect(c.MONGO_URL);
+// Reference data and scholarships always; demo accounts and the simulated provider only with SEED_DEMO=true,
+// which the configuration refuses in production.
+if (c.SEED_DEMO) {
+  await seedDemo();
+} else {
+  await seedReferenceData();
+  await seedScholarships();
+}
+logger.info({ demo: c.SEED_DEMO }, 'seed complete');
 await mongoose.disconnect();

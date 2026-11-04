@@ -120,7 +120,7 @@ const parseDate = (v: string | null | undefined) => {
   return m ? new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]))) : null;
 };
 
-export function checkIncomeCertificate(fields: FieldValues, now = new Date()): CheckResult[] {
+export function checkIncomeCertificate(fields: FieldValues, now = new Date(), validityDays = 366): CheckResult[] {
   const income = toNumber(fields.annual_income);
   const issued = parseDate(fields.issue_date);
   const ageDays = issued ? (now.getTime() - issued.getTime()) / 86_400_000 : null;
@@ -137,9 +137,9 @@ export function checkIncomeCertificate(fields: FieldValues, now = new Date()): C
       : {
           code: 'certificate_current',
           label: 'Certificate issued within the last 12 months',
-          status: ageDays >= 0 && ageDays <= 366 ? 'pass' : 'fail',
+          status: ageDays >= 0 && ageDays <= validityDays ? 'pass' : 'fail',
           actual: fields.issue_date,
-          message: ageDays < 0 ? 'Issue date is in the future' : ageDays <= 366 ? 'Certificate is current' : 'Certificate is older than 12 months',
+          message: ageDays < 0 ? 'Issue date is in the future' : ageDays <= validityDays ? 'Certificate is current' : `Certificate is older than ${validityDays} days`,
         },
   ];
 }
@@ -150,7 +150,7 @@ const P = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,
 export const verhoeffValid = (digits: string) =>
   /^\d+$/.test(digits) && digits.split('').reverse().reduce((c, d, i) => D[c][P[i % 8][Number(d)]], 0) === 0;
 
-export function checkIdentity(fields: FieldValues, now = new Date()): CheckResult[] {
+export function checkIdentity(fields: FieldValues, now = new Date(), ages: { min: number; max: number } = { min: 10, max: 100 }): CheckResult[] {
   const id = fields.id_number?.replace(/\s/g, '') ?? '';
   const dob = parseDate(fields.date_of_birth);
   const age = dob ? (now.getTime() - dob.getTime()) / (365.25 * 86_400_000) : null;
@@ -160,18 +160,24 @@ export function checkIdentity(fields: FieldValues, now = new Date()): CheckResul
       : { code: 'id_checksum', label: 'ID number checksum is valid', status: 'not_applicable', message: 'ID number is not a 12-digit number' },
     age === null
       ? { code: 'dob_plausible', label: 'Date of birth is plausible', status: 'not_applicable', message: 'Date of birth not available' }
-      : { code: 'dob_plausible', label: 'Date of birth is plausible', status: age >= 10 && age <= 100 ? 'pass' : 'fail', message: `Age computed as ${Math.floor(age)} years` },
+      : { code: 'dob_plausible', label: 'Date of birth is plausible', status: age >= ages.min && age <= ages.max ? 'pass' : 'fail', message: `Age computed as ${Math.floor(age)} years` },
   ];
 }
 
-export function runConsistencyChecks(documentType: string | null, fields: FieldValues, tolerance: number): CheckResult[] {
+export interface ConsistencyOptions {
+  certificateValidityDays?: number;
+  minPlausibleAge?: number;
+  maxPlausibleAge?: number;
+}
+
+export function runConsistencyChecks(documentType: string | null, fields: FieldValues, tolerance: number, opts: ConsistencyOptions = {}): CheckResult[] {
   switch (documentType) {
     case 'marksheet':
       return checkMarksheet(fields, tolerance);
     case 'income_certificate':
-      return checkIncomeCertificate(fields);
+      return checkIncomeCertificate(fields, new Date(), opts.certificateValidityDays);
     case 'identity':
-      return checkIdentity(fields);
+      return checkIdentity(fields, new Date(), { min: opts.minPlausibleAge ?? 10, max: opts.maxPlausibleAge ?? 100 });
     default:
       return [];
   }

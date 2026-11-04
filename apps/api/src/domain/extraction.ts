@@ -46,7 +46,7 @@ export interface DocumentTypeDef {
 
 export const fullText = (ocr: OcrResult) => ocr.pages.flatMap((p) => p.lines.map((l) => l.text)).join('\n');
 
-export function classify(text: string, types: DocumentTypeDef[], threshold: number) {
+export function classify(text: string, types: DocumentTypeDef[], threshold: number, margin = 0.15) {
   const haystack = text.toLowerCase();
   const scores: Record<string, number> = {};
   for (const t of types) {
@@ -60,7 +60,7 @@ export function classify(text: string, types: DocumentTypeDef[], threshold: numb
   const [top, second] = ranked;
   const confidence = top?.[1] ?? 0;
   // A near-tie between two types is ambiguous: a human decides rather than the system guessing.
-  const ambiguous = second !== undefined && confidence - second[1] < 0.15;
+  const ambiguous = second !== undefined && confidence - second[1] < margin;
   return { documentType: top && confidence >= threshold && !ambiguous ? top[0] : null, confidence, scores };
 }
 
@@ -142,7 +142,7 @@ function build(
  * Extracts every profile field. A field that is missing, fails its type check, or falls below its
  * confidence threshold is returned as `needs_review` — the extractor never fills a value it did not read.
  */
-export function extractFields(ocr: OcrResult, profile: Profile, defaultThreshold: number): ExtractedValue[] {
+export function extractFields(ocr: OcrResult, profile: Profile, defaultThreshold: number, unreadableBelow = 0.5): ExtractedValue[] {
   const lines = indexLines(ocr);
   const out: ExtractedValue[] = [];
 
@@ -174,7 +174,7 @@ export function extractFields(ocr: OcrResult, profile: Profile, defaultThreshold
       const m = matched[i];
       // A line inside the table that OCR could barely read may be a whole subject: it becomes an empty row
       // for the officer to fill, instead of being dropped from the totals without anyone noticing.
-      const unreadable = !m && line.words.length > 0 && line.words.reduce((s, w) => s + w.conf, 0) / line.words.length < UNREADABLE_LINE;
+      const unreadable = !m && line.words.length > 0 && line.words.reduce((s, w) => s + w.conf, 0) / line.words.length < unreadableBelow;
       if (!m && !unreadable) continue;
       let group = 1;
       for (const c of t.columns) {
@@ -198,17 +198,14 @@ export function extractFields(ocr: OcrResult, profile: Profile, defaultThreshold
   return out;
 }
 
-/** Mean word confidence below which a line inside a table is treated as an unreadable row. */
-const UNREADABLE_LINE = 0.5;
-
 /**
  * A document type can have several layouts. Every active format is tried and the one that finds the
  * largest share of its required fields wins; ties go to the higher average confidence.
  */
-export function pickBestProfile<P extends Profile>(ocr: OcrResult, profiles: P[], defaultThreshold: number) {
+export function pickBestProfile<P extends Profile>(ocr: OcrResult, profiles: P[], defaultThreshold: number, unreadableBelow = 0.5) {
   let best: { profile: P; values: ExtractedValue[]; coverage: number; meanConfidence: number } | undefined;
   for (const profile of profiles) {
-    const values = extractFields(ocr, profile, defaultThreshold);
+    const values = extractFields(ocr, profile, defaultThreshold, unreadableBelow);
     const required = profile.fields.filter((f) => f.required);
     const found = required.filter((f) => values.some((v) => v.key === f.key && v.value !== null)).length;
     const tableFound = values.some((v) => v.group && v.value !== null && !v.label.endsWith('(set by format)')) ? 1 : 0;

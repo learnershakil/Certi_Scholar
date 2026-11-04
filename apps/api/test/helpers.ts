@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -6,7 +8,17 @@ import { createApp } from '../src/app.js';
 import { InlineQueue, setJobQueue } from '../src/pipeline/queue.js';
 import { handlers } from '../src/pipeline/handlers.js';
 import { setOcrClient, type OcrClient, type OcrResult } from '../src/ocr/client.js';
-import { DEMO_PASSWORD, seedDemo } from '../src/seedData.js';
+import { seedDemo } from '../src/seedData.js';
+
+export const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD!;
+
+const DEMO_USERS = JSON.parse(readFileSync(join(process.cwd(), 'seed', 'demo-users.json'), 'utf8')) as Array<{ email: string }>;
+/** Demo account email by its short name (the part before @), as listed in seed/demo-users.json. */
+export function demoEmail(who: string): string {
+  const user = DEMO_USERS.find((u) => u.email.split('@')[0] === who);
+  if (!user) throw new Error(`No demo user "${who}" in seed/demo-users.json`);
+  return user.email;
+}
 
 /** Builds an OCR v1 result from text lines; `conf` lets a test lower confidence for chosen words. */
 export function fakeOcr(lines: string[], conf: (word: string) => number = () => 0.97): OcrResult {
@@ -112,7 +124,7 @@ export async function startHarness(): Promise<Harness> {
     },
     login: async (who) => {
       const agent = request.agent(app);
-      await agent.post('/api/v1/auth/login').send({ email: `${who}@certischolar.local`, password: DEMO_PASSWORD }).expect(200);
+      await agent.post('/api/v1/auth/login').send({ email: demoEmail(who), password: DEMO_PASSWORD }).expect(200);
       return agent;
     },
   };

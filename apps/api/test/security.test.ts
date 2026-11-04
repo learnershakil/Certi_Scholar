@@ -85,7 +85,7 @@ describe('upload content validation', () => {
 describe('production configuration guards', () => {
   const base = { JWT_SECRET: 'j'.repeat(32), PRESIGN_SECRET: 'p'.repeat(32), STORAGE_KEY: key.toString('base64') };
   afterEach(() => {
-    Object.assign(process.env, { NODE_ENV: 'test', QUEUE_DRIVER: 'inline', MALWARE_SCANNER: 'signature' });
+    Object.assign(process.env, { NODE_ENV: 'test', QUEUE_DRIVER: 'inline', MALWARE_SCANNER: 'signature', SEED_DEMO: 'true' });
     resetConfig();
   });
 
@@ -101,7 +101,7 @@ describe('production configuration guards', () => {
   });
 
   it('blocks the simulated verification provider in production', () => {
-    Object.assign(process.env, { NODE_ENV: 'production', QUEUE_DRIVER: 'bullmq', MALWARE_SCANNER: 'clamav' });
+    Object.assign(process.env, { NODE_ENV: 'production', QUEUE_DRIVER: 'bullmq', MALWARE_SCANNER: 'clamav', SEED_DEMO: 'false' });
     resetConfig();
     expect(() => resolveProvider({ verificationProvider: 'simulated' })).toThrow(/cannot be used in production/);
   });

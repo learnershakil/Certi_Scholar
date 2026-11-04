@@ -14,7 +14,7 @@ const queues = process.env.WORKER_QUEUES?.split(',').map((q) => q.trim());
 const workers = startWorkers(handlers, queues);
 
 // Daily retention sweep (repeatable job, deduplicated by BullMQ).
-await new Queue('maintenance', { connection: redisConnection() }).upsertJobScheduler('retention', { pattern: '0 2 * * *' }, { name: 'maintenance.retention', data: {} });
+await new Queue('maintenance', { connection: redisConnection() }).upsertJobScheduler('retention', { pattern: c.RETENTION_CRON }, { name: 'maintenance.retention', data: {} });
 logger.info({ queues: queues ?? 'all' }, 'workers started');
 
 const shutdown = async () => {

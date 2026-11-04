@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import { dateTime, docType } from '@/lib/format';
 import type { DocumentSummary } from '@/lib/types';
-import { useMe } from '@/components/AppShell';
+import { useDocTypes, useMe } from '@/components/AppShell';
 import { Card, Empty, ErrorText, Loading, PageHead, StatusPill } from '@/components/ui';
 
 const ACTIVE = ['queued', 'processing'];
@@ -18,6 +18,7 @@ function Upload({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [declaredType, setDeclaredType] = useState('');
+  const docTypes = useDocTypes();
 
   const send = async (file?: File) => {
     if (!file) return;
@@ -54,9 +55,7 @@ function Upload({ onDone }: { onDone: () => void }) {
       <div className="row" style={{ justifyContent: 'center' }}>
         <select className="select" style={{ width: 240 }} value={declaredType} onChange={(e) => setDeclaredType(e.target.value)} aria-label="Document type">
           <option value="">Detect type automatically</option>
-          <option value="marksheet">Statement of marks</option>
-          <option value="income_certificate">Income certificate</option>
-          <option value="identity">Identity document</option>
+          {docTypes.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
         </select>
         <button className="btn btn-primary" disabled={busy} onClick={() => input.current?.click()}>
           {busy ? 'Uploading…' : 'Choose file'}

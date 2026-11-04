@@ -62,6 +62,29 @@ const SettingsSchema = new Schema(
     classificationThreshold: { type: Number, default: 0.6, min: 0, max: 1 },
     percentageTolerance: { type: Number, default: 0.05, min: 0 },
     retentionDays: { type: Number, default: 365, min: 1 },
+    /** A type wins only if it leads the runner-up by at least this score; closer calls go to an officer. */
+    classificationMargin: { type: Number, default: 0.15, min: 0, max: 1 },
+    /** A line inside a marks table whose mean OCR confidence is below this becomes an empty row for review. */
+    unreadableLineConfidence: { type: Number, default: 0.5, min: 0, max: 1 },
+    /** How old an income certificate may be and still count as current. */
+    certificateValidityDays: { type: Number, default: 366, min: 1 },
+    /** Ages outside this range make the date of birth implausible. */
+    minPlausibleAge: { type: Number, default: 10, min: 0 },
+    maxPlausibleAge: { type: Number, default: 100, min: 1 },
+    /** Product name and sign-in page wording. */
+    branding: {
+      appName: String,
+      eyebrow: String,
+      headline: String,
+      lead: String,
+      points: { type: [String], default: undefined },
+      footnote: String,
+      passwordHelp: String,
+    },
+    /** Display names for the fixed roles, keyed by role. */
+    roleLabels: Mixed,
+    /** Display name and description per rule fact, keyed by fact. */
+    factText: Mixed,
     verificationProvider: { type: String, enum: VERIFICATION_PROVIDER_IDS, default: 'manual_only' },
     registryBaseUrl: String,
     updatedBy: { type: ObjectId, ref: 'User' },
@@ -78,6 +101,7 @@ export const SettingsModel = model('Settings', SettingsSchema);
 export type Settings = InferSchemaType<typeof SettingsSchema>;
 
 export async function getSettings(): Promise<Settings> {
-  const s = await SettingsModel.findById('global').lean();
-  return s ?? (await SettingsModel.create({ _id: 'global' })).toObject();
+  // Loaded as a full document (not lean) so settings added in later releases get their defaults.
+  const s = await SettingsModel.findById('global');
+  return (s ?? (await SettingsModel.create({ _id: 'global' }))).toObject();
 }

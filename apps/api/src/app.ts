@@ -12,6 +12,8 @@ import { scholarships } from './routes/scholarships.js';
 import { applications } from './routes/applications.js';
 import { reports } from './routes/reports.js';
 import { admin } from './routes/admin.js';
+import { DocumentTypeModel } from './models/document.js';
+import { getSettings } from './models/system.js';
 
 export function createApp() {
   const app = express();
@@ -29,7 +31,16 @@ export function createApp() {
 
   const v1 = express.Router();
   v1.use('/auth', auth);
+  // Public: the sign-in page needs the product wording and role names before anyone signs in. Nothing private here.
+  v1.get('/branding', async (_req, res) => {
+    const s = await getSettings();
+    res.json({ branding: s.branding ?? {}, roleLabels: s.roleLabels ?? {} });
+  });
   v1.use(authenticate);
+  // The document types the system knows; every dropdown and label in the web app is built from this.
+  v1.get('/document-types', async (_req, res) => {
+    res.json(await DocumentTypeModel.find({ active: true }).select('code name -_id').sort({ name: 1 }).lean());
+  });
   v1.use('/documents', documents);
   v1.use('/files', files);
   v1.use('/scholarships', scholarships);

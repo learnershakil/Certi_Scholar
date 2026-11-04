@@ -18,13 +18,17 @@ docs             Architecture, OCR contract v1, committee guidance, benchmark re
 ## Run the stack
 
 ```bash
+node scripts/init-env.mjs
+```
+
+```bash
 docker compose up -d --build
 ```
 
-This starts mongo, redis, clamav, ocr (with Tesseract), api, worker, worker-ocr and web. ClamAV needs about 2 minutes to load its signatures on first start.
+The first command creates `.env` with random secrets and a random demo password, which it prints. The second starts mongo, redis, clamav, ocr (with Tesseract), api, worker, worker-ocr and web. ClamAV needs about 2 minutes to load its signatures on first start.
 
 - App: http://localhost:3000. API: http://localhost:4000
-- Demo accounts (seeded only when `NODE_ENV` is not production), password `Demo#Pass2026`:
+- Demo accounts (created only when `SEED_DEMO=true`, never in production), password = `SEED_DEMO_PASSWORD` in `.env`:
   `student@`, `student2@`, `verifier@`, `officer@`, `admin@certischolar.local`
 - Sample documents: `samples/documents/*.pdf|png`. Regenerate them with `python samples/generate.py`.
 
@@ -35,6 +39,26 @@ This starts mongo, redis, clamav, ocr (with Tesseract), api, worker, worker-ocr 
 3. **Student**: apply for *Merit-cum-Means Scholarship 2026* with the three documents.
 4. **Officer**: open the application. You see every condition with its result, the source of each fact, and what has been established about each document. Award it, then export the award list from Reports.
 5. **Admin**: under Scholarships & rules, edit a rule with the no-code builder, try it in the test harness, and publish a new version (no deployment). Settings covers thresholds, the provider and extraction profiles. The Audit page shows actions and every document view.
+
+## Configuration: where every value lives
+
+Nothing environment-specific is written in the code. Each kind of value has one home:
+
+| Kind of value | Where | How to change it |
+|---|---|---|
+| Secrets: `JWT_SECRET`, `PRESIGN_SECRET`, `STORAGE_KEY`, `REGISTRY_API_KEY` | `.env` (never committed) | `node scripts/init-env.mjs` generates them; edit `.env` and restart. **Never change `STORAGE_KEY` on a system with documents**: they would no longer open |
+| Runtime settings: session length, job retries and backoff, worker concurrency, retention schedule, list size, upload limit, OCR timeout | `.env`, documented in `.env.example` | Edit `.env`, then `docker compose up -d`. The API validates every value at startup and names any bad one |
+| Demo accounts and their password | `apps/api/seed/demo-users.json` + `SEED_DEMO`, `SEED_DEMO_PASSWORD` in `.env` | Refused when `NODE_ENV=production` |
+| Login-page demo shortcuts | `NEXT_PUBLIC_DEMO_ACCOUNTS` in `.env` (`email:role,…`) | Rebuild the web image. They fill the email and role only; no password is ever in the web app |
+| Reference data: document types, extraction profiles, scholarships and first rule sets | JSON files in `apps/api/seed/` | Loaded on first start, and only what's missing is created, so later edits made in the app are kept. After that, change them in the app |
+| Tuning: confidence and classification thresholds, classification margin, percentage tolerance, unreadable-line confidence, certificate validity, plausible age range, retention period, verification provider | Database (`Settings`) | **Admin → Settings & profiles**, no restart; every change is audited |
+| Extraction profile patterns and thresholds | Database (`ExtractionProfile`, versioned) | **Admin → Settings & profiles** → Publish new version |
+| Eligibility rules | Database (`ScholarshipRule`, versioned) | **Admin → Scholarships & rules**, tested in the harness before publishing |
+| Product name, sign-in page wording, role names, rule-fact labels and descriptions | Database (`Settings`), defaults in `apps/api/seed/settings.json`, served publicly (branding and role names only) at `GET /api/v1/branding` | **Admin → Settings & profiles → Wording**; shows on the next page load, no rebuild |
+| Demo people and their emails | `apps/api/seed/demo-users.json` | Edit the file; scripts and tests look emails up there |
+| Document types shown in dropdowns and labels | Database (`DocumentType`), served at `GET /api/v1/document-types` | Add to `seed/document-types.json` for new installs; the web app reads the list from the API |
+
+What stays in code on purpose: the role keys, status keys and rule operators (their display names are configurable). These are the system's vocabulary, which the code reasons about; changing them is a code change by design.
 
 ## Tests
 
@@ -52,7 +76,7 @@ The API tests download a MongoDB binary on first run. On Windows set `MONGOMS_DO
 
 ```bash
 cd services/ocr && uvicorn app.main:app --port 8000      # Tesseract on PATH for scans; digital PDFs need none
-cd apps/api && QUEUE_DRIVER=inline MALWARE_SCANNER=signature npm run seed && npm run dev
+cd apps/api && QUEUE_DRIVER=inline MALWARE_SCANNER=signature npm run seed && npm run dev   # with the .env values exported
 cd apps/web && npm run dev
 ```
 

@@ -1,3 +1,8 @@
+export interface DocTypeDef {
+  code: string;
+  name: string;
+}
+
 export type Role = 'student' | 'verifier' | 'scholarship_officer' | 'admin';
 
 export interface Me {

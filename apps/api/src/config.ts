@@ -22,9 +22,29 @@ const schema = z
     CLAMAV_PORT: z.coerce.number().default(3310),
     REGISTRY_API_KEY: z.string().optional(),
     WEB_ORIGIN: z.string().default('http://localhost:3000'),
+    // Sessions
+    SESSION_TTL_HOURS: z.coerce.number().positive().max(72).default(8),
+    // Background jobs
+    JOB_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    JOB_BACKOFF_MS: z.coerce.number().int().min(100).default(5_000),
+    OCR_CONCURRENCY: z.coerce.number().int().min(1).default(4),
+    WORKER_CONCURRENCY: z.coerce.number().int().min(1).default(8),
+    RETENTION_CRON: z.string().default('0 2 * * *'),
+    // Lists
+    LIST_PAGE_SIZE: z.coerce.number().int().min(10).max(1000).default(200),
+    // Seed data (reference data always; demo users only when SEED_DEMO=true)
+    SEED_DIR: z.string().default('./seed'),
+    SEED_DEMO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+    SEED_DEMO_PASSWORD: z.string().min(10).optional(),
   })
   .superRefine((env, ctx) => {
+    if (env.SEED_DEMO && !env.SEED_DEMO_PASSWORD) {
+      ctx.addIssue({ code: 'custom', path: ['SEED_DEMO_PASSWORD'], message: 'required when SEED_DEMO=true' });
+    }
     if (env.NODE_ENV !== 'production') return;
+    if (env.SEED_DEMO) {
+      ctx.addIssue({ code: 'custom', path: ['SEED_DEMO'], message: 'demo accounts are never created in production' });
+    }
     if (env.QUEUE_DRIVER === 'inline') {
       ctx.addIssue({ code: 'custom', path: ['QUEUE_DRIVER'], message: 'inline queue is test/dev only' });
     }

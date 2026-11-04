@@ -1,6 +1,6 @@
-# Local / staging stack. Secrets below are development defaults — override every one via .env in any shared environment.
+# Local / staging stack. All secrets and settings come from .env (create it with: node scripts/init-env.mjs).
+# Only the wiring between containers is defined here.
 x-api-env: &api-env
-  NODE_ENV: ${NODE_ENV:-development}
   MONGO_URL: mongodb://mongo:27017/certischolar
   REDIS_URL: redis://redis:6379
   QUEUE_DRIVER: bullmq
@@ -8,10 +8,12 @@ x-api-env: &api-env
   MALWARE_SCANNER: clamav
   CLAMAV_HOST: clamav
   STORAGE_DIR: /data/documents
-  JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0000000000}
-  PRESIGN_SECRET: ${PRESIGN_SECRET:-dev-only-presign-secret-change-me-00000}
-  STORAGE_KEY: ${STORAGE_KEY:-ZGV2LW9ubHktc3RvcmFnZS1rZXktMzItYnl0ZXMhISE=}
   WEB_ORIGIN: http://localhost:3000
+
+x-api-service: &api-service
+  build: ./apps/api
+  env_file: [.env]
+  volumes: [documents:/data/documents]
 
 services:
   mongo:
@@ -33,14 +35,13 @@ services:
   # Deployed and scaled separately from the Node services; has its own health check.
   ocr:
     build: ./services/ocr
-    environment: { OCR_PROVIDER: tesseract, OCR_WORKERS: "2" }
+    env_file: [.env]
     deploy: { replicas: 1 }
 
   api:
-    build: ./apps/api
+    <<: *api-service
     environment: *api-env
     command: ["sh", "-c", "node dist/seed.js && node dist/server.js"]
-    volumes: [documents:/data/documents]
     ports: ["4000:4000"]
     depends_on:
       mongo: { condition: service_healthy }
@@ -49,24 +50,26 @@ services:
 
   # Fast queues: analysis, verification, evaluation, maintenance.
   worker:
-    build: ./apps/api
+    <<: *api-service
     environment: { <<: *api-env, WORKER_QUEUES: "analysis,verification,evaluation,maintenance" }
     command: ["node", "dist/worker.js"]
-    volumes: [documents:/data/documents]
     healthcheck: { disable: true }
     depends_on: { api: { condition: service_started } }
 
   # OCR queue on its own workers so a slow document never delays rule evaluation.
   worker-ocr:
-    build: ./apps/api
+    <<: *api-service
     environment: { <<: *api-env, WORKER_QUEUES: "ocr" }
     command: ["node", "dist/worker.js"]
-    volumes: [documents:/data/documents]
     healthcheck: { disable: true }
     depends_on: { api: { condition: service_started }, ocr: { condition: service_healthy } }
 
   web:
-    build: { context: ./apps/web, args: { API_URL: http://api:4000 } }
+    build:
+      context: ./apps/web
+      args:
+        API_URL: http://api:4000
+        NEXT_PUBLIC_DEMO_ACCOUNTS: ${NEXT_PUBLIC_DEMO_ACCOUNTS:-}
     ports: ["3000:3000"]
     depends_on: [api]
 

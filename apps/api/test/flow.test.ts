@@ -4,7 +4,7 @@ import { CorrectionModel, DocumentModel, ExtractedFieldModel } from '../src/mode
 import { AuditEntryModel, DocumentAccessLogModel, NotificationModel, SettingsModel } from '../src/models/system.js';
 import { OcrServiceError } from '../src/ocr/client.js';
 import { runRetention } from '../src/pipeline/documentPipeline.js';
-import { fakeOcr, IDENTITY, INCOME, MARKSHEET, png, startHarness, type Harness } from './helpers.js';
+import { DEMO_PASSWORD, demoEmail, fakeOcr, IDENTITY, INCOME, MARKSHEET, png, startHarness, type Harness } from './helpers.js';
 
 let h: Harness;
 let student: Awaited<ReturnType<Harness['login']>>;
@@ -31,8 +31,18 @@ beforeAll(async () => {
 afterAll(() => h.stop());
 
 describe('authentication', () => {
+  it('accepts the account role picked at login and refuses any other, with the same message', async () => {
+    const login = (role?: string) => request(h.app).post('/api/v1/auth/login').send({ email: demoEmail('verifier'), password: DEMO_PASSWORD, role });
+    expect((await login('verifier').expect(200)).body.role).toBe('verifier');
+    const wrongRole = (await login('admin').expect(401)).body.error.message;
+    const wrongPassword = (await request(h.app).post('/api/v1/auth/login').send({ email: demoEmail('verifier'), password: 'x', role: 'verifier' }).expect(401)).body.error.message;
+    expect(wrongRole).toBe(wrongPassword);
+    await login('superuser').expect(400);
+    await login().expect(200); // scripts and API clients may omit the role
+  });
+
   it('rejects bad credentials and unauthenticated calls', async () => {
-    await request(h.app).post('/api/v1/auth/login').send({ email: 'student@certischolar.local', password: 'nope' }).expect(401);
+    await request(h.app).post('/api/v1/auth/login').send({ email: demoEmail('student'), password: 'nope' }).expect(401);
     await request(h.app).get('/api/v1/documents').expect(401);
     expect((await student.get('/api/v1/auth/me').expect(200)).body.role).toBe('student');
   });

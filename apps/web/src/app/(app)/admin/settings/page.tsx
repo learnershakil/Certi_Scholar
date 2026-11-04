@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { put } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import { docType } from '@/lib/format';
+import { roleLabel, type Branding } from '@/lib/branding';
 import { Card, ErrorText, Loading, Notice, PageHead, StatusPill } from '@/components/ui';
 
 interface Settings {
@@ -11,10 +12,76 @@ interface Settings {
   classificationThreshold: number;
   percentageTolerance: number;
   retentionDays: number;
+  classificationMargin: number;
+  unreadableLineConfidence: number;
+  certificateValidityDays: number;
+  minPlausibleAge: number;
+  maxPlausibleAge: number;
   verificationProvider: 'simulated' | 'registry' | 'manual_only';
   registryBaseUrl?: string;
   environment: string;
   simulatedProviderAllowed: boolean;
+  branding?: Branding;
+  roleLabels?: Record<string, string>;
+  factText?: Record<string, { label?: string; description?: string }>;
+}
+
+const ROLE_KEYS = ['student', 'verifier', 'scholarship_officer', 'admin'];
+
+/** Product name, sign-in page wording, role names and rule-fact labels. Saved with the other settings. */
+function WordingEditor({ form, setForm }: { form: Settings; setForm: (s: Settings) => void }) {
+  const b = form.branding ?? {};
+  const setB = (patch: Partial<Branding>) => setForm({ ...form, branding: { ...b, ...patch } });
+  const text = (key: keyof Branding, label: string, multiline = false) => (
+    <div className="form-row">
+      <label className="label">{label}</label>
+      {multiline ? (
+        <textarea className="textarea" value={(b[key] as string) ?? ''} onChange={(e) => setB({ [key]: e.target.value })} aria-label={label} />
+      ) : (
+        <input className="input" value={(b[key] as string) ?? ''} onChange={(e) => setB({ [key]: e.target.value })} aria-label={label} />
+      )}
+    </div>
+  );
+  return (
+    <div className="grid grid-2">
+      <Card title="Branding and sign-in page">
+        {text('appName', 'Application name')}
+        {text('eyebrow', 'Sign-in page eyebrow')}
+        {text('headline', 'Sign-in page headline')}
+        {text('lead', 'Sign-in page introduction', true)}
+        <div className="form-row">
+          <label className="label">Sign-in page points (one per line)</label>
+          <textarea className="textarea" value={(b.points ?? []).join('\n')} onChange={(e) => setB({ points: e.target.value.split('\n') })} aria-label="Sign-in page points" />
+        </div>
+        {text('passwordHelp', 'Forgotten-password note')}
+        {text('footnote', 'Sidebar note')}
+      </Card>
+      <div className="stack">
+        <Card title="Role names">
+          {ROLE_KEYS.map((r) => (
+            <div className="form-row" key={r}>
+              <label className="label">{r}</label>
+              <input className="input" value={form.roleLabels?.[r] ?? ''} placeholder={roleLabel({}, r)} onChange={(e) => setForm({ ...form, roleLabels: { ...form.roleLabels, [r]: e.target.value } })} aria-label={`Name for ${r}`} />
+            </div>
+          ))}
+        </Card>
+        <Card flush title="Rule fact labels">
+          <table className="table">
+            <thead><tr><th>Fact</th><th>Label</th><th>Description</th></tr></thead>
+            <tbody>
+              {Object.entries(form.factText ?? {}).map(([key, t]) => (
+                <tr key={key}>
+                  <td className="mono small">{key}</td>
+                  <td><input className="input" value={t.label ?? ''} onChange={(e) => setForm({ ...form, factText: { ...form.factText, [key]: { ...t, label: e.target.value } } })} aria-label={`Label for ${key}`} /></td>
+                  <td><input className="input" value={t.description ?? ''} onChange={(e) => setForm({ ...form, factText: { ...form.factText, [key]: { ...t, description: e.target.value } } })} aria-label={`Description for ${key}`} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    </div>
+  );
 }
 
 interface ProfileField { key: string; label: string; kind: string; pattern: string; required: boolean; threshold?: number | null }
@@ -100,6 +167,30 @@ export default function SettingsPage() {
               <input className="input" type="number" min="30" max="3650" value={form.retentionDays} onChange={num('retentionDays')} />
               <div className="small faint">Files and extracted data are deleted after this period. The audit trail is kept.</div>
             </div>
+            <div className="form-row">
+              <label className="label">Classification margin</label>
+              <input className="input" type="number" step="0.01" min="0" max="0.5" value={form.classificationMargin} onChange={num('classificationMargin')} />
+              <div className="small faint">The best type must lead the next by this much, or an officer decides.</div>
+            </div>
+            <div className="form-row">
+              <label className="label">Unreadable table line below confidence</label>
+              <input className="input" type="number" step="0.05" min="0" max="1" value={form.unreadableLineConfidence} onChange={num('unreadableLineConfidence')} />
+              <div className="small faint">Such a line in a marks table becomes an empty row for the officer to fill.</div>
+            </div>
+            <div className="form-row">
+              <label className="label">Income certificate valid for (days)</label>
+              <input className="input" type="number" min="1" max="3650" value={form.certificateValidityDays} onChange={num('certificateValidityDays')} />
+            </div>
+            <div className="form-row row" style={{ gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label className="label">Plausible age from</label>
+                <input className="input" type="number" min="0" max="120" value={form.minPlausibleAge} onChange={num('minPlausibleAge')} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="label">to</label>
+                <input className="input" type="number" min="1" max="150" value={form.maxPlausibleAge} onChange={num('maxPlausibleAge')} />
+              </div>
+            </div>
           </Card>
           <Card title="Verification provider">
             <div className="form-row">
@@ -135,6 +226,8 @@ export default function SettingsPage() {
             </div>
           </Card>
         </div>
+        <h2 style={{ marginTop: 8 }}>Wording</h2>
+        <WordingEditor form={form} setForm={setForm} />
         <div className="row">
           <button
             className="btn btn-primary"
@@ -143,8 +236,9 @@ export default function SettingsPage() {
               setMsg(undefined);
               try {
                 const { environment: _e, simulatedProviderAllowed: _s, ...body } = form;
-                await put('/admin/settings', { ...body, registryBaseUrl: body.registryBaseUrl || undefined });
-                setMsg('Settings saved.');
+                const branding = body.branding && { ...body.branding, points: (body.branding.points ?? []).map((p) => p.trim()).filter(Boolean) };
+                await put('/admin/settings', { ...body, branding, registryBaseUrl: body.registryBaseUrl || undefined });
+                setMsg('Settings saved. New wording shows on the next page load.');
                 void settings.reload();
               } catch (e) {
                 setError((e as Error).message);

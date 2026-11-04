@@ -1,7 +1,8 @@
 import { ConsistencyCheckModel, DocumentModel, ExtractedFieldModel, type VerificationStatus } from '../models/document.js';
 import { ApplicationModel, RecommendationModel, ScholarshipModel, ScholarshipRuleModel } from '../models/scholarship.js';
 import { UserModel } from '../models/user.js';
-import { deriveFacts, type DocumentFacts } from '../domain/facts.js';
+import { deriveFacts, type DocumentFacts, type FactText } from '../domain/facts.js';
+import { getSettings } from '../models/system.js';
 import { evaluate, type RuleNode } from '../domain/rules.js';
 import { authenticityStatement } from '../verification/providers.js';
 import { notify, timeline } from '../lib/events.js';
@@ -37,7 +38,7 @@ export async function evaluateApplication(applicationId: string, actorId?: strin
   );
 
   const { facts, provenance } = deriveFacts(student?.profile ?? {}, docFacts);
-  const evaluation = evaluate(rule.root as unknown as RuleNode, facts);
+  const evaluation = evaluate(rule.root as unknown as RuleNode, facts, (await getSettings()).factText as FactText);
   const missingDocs = (scholarship.requiredDocuments ?? []).filter((t) => !docs.some((d) => d.documentType === t));
   let outcome: 'recommended' | 'not_recommended' | 'needs_review' = OUTCOME[evaluation.outcome];
   // Without every required document the decision cannot be made either way.

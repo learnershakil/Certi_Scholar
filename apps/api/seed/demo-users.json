@@ -1,0 +1,37 @@
+[
+  {
+    "email": "admin@certischolar.local",
+    "name": "Priya Raman",
+    "role": "admin"
+  },
+  {
+    "email": "verifier@certischolar.local",
+    "name": "Rahul Mehta",
+    "role": "verifier"
+  },
+  {
+    "email": "officer@certischolar.local",
+    "name": "Sunita Iyer",
+    "role": "scholarship_officer"
+  },
+  {
+    "email": "student@certischolar.local",
+    "name": "Ananya Sharma",
+    "role": "student",
+    "profile": {
+      "category": "OBC",
+      "gender": "female",
+      "state": "Karnataka"
+    }
+  },
+  {
+    "email": "student2@certischolar.local",
+    "name": "Arjun Verma",
+    "role": "student",
+    "profile": {
+      "category": "GEN",
+      "gender": "male",
+      "state": "Maharashtra"
+    }
+  }
+]

@@ -21,8 +21,9 @@ export function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infe
 }
 
 export function issueSession(res: Response, user: { id: string; role: string }) {
-  const token = jwt.sign({ sub: user.id, role: user.role }, config().JWT_SECRET, { expiresIn: '8h' });
-  res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: config().NODE_ENV === 'production', maxAge: 8 * 3600_000, path: '/' });
+  const hours = config().SESSION_TTL_HOURS;
+  const token = jwt.sign({ sub: user.id, role: user.role }, config().JWT_SECRET, { expiresIn: `${hours}h` });
+  res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: config().NODE_ENV === 'production', maxAge: hours * 3600_000, path: '/' });
 }
 
 /** Resolves the session on every request so a deactivated user or changed role takes effect immediately. */

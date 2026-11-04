@@ -83,7 +83,7 @@ export async function runAnalyse(documentId: string) {
   await stage(doc, 'classify', async () => {
     if (doc.classification?.overriddenBy) return; // an officer has set the type; respect it
     const types = await DocumentTypeModel.find({ active: true }).lean();
-    const result = classify(fullText(ocr), types, settings.classificationThreshold);
+    const result = classify(fullText(ocr), types, settings.classificationThreshold, settings.classificationMargin);
     let documentType = result.documentType;
     let source: 'keywords' | 'declared' = 'keywords';
     // The student's choice settles an inconclusive result, but only if the text shows some sign of that type.
@@ -112,7 +112,7 @@ export async function runAnalyse(documentId: string) {
     // The newest active version of each format for this type; the layout that fits best wins.
     const active = await ExtractionProfileModel.find({ documentType: doc.documentType, active: true }).sort({ version: -1 }).lean();
     const newestPerFormat = active.filter((p, i) => active.findIndex((q) => q.format === p.format) === i);
-    const best = pickBestProfile(ocr, newestPerFormat as unknown as Array<Profile & { format: string; version: number }>, settings.defaultConfidenceThreshold);
+    const best = pickBestProfile(ocr, newestPerFormat as unknown as Array<Profile & { format: string; version: number }>, settings.defaultConfidenceThreshold, settings.unreadableLineConfidence);
     if (!best) throw new PermanentJobError(`No active extraction profile for ${doc.documentType}`);
     const { profile, values } = best;
     // Idempotent reprocessing: machine output is replaced; officer corrections are re-applied on top.
@@ -149,7 +149,11 @@ export async function recomputeConsistency(documentId: Types.ObjectId) {
     getSettings(),
   ]);
   const values = Object.fromEntries(fields.map((f) => [f.key, f.value]));
-  const checks = runConsistencyChecks(doc?.documentType ?? null, values, settings.percentageTolerance);
+  const checks = runConsistencyChecks(doc?.documentType ?? null, values, settings.percentageTolerance, {
+    certificateValidityDays: settings.certificateValidityDays,
+    minPlausibleAge: settings.minPlausibleAge,
+    maxPlausibleAge: settings.maxPlausibleAge,
+  });
   await ConsistencyCheckModel.deleteMany({ document: documentId });
   await ConsistencyCheckModel.insertMany(checks.map((c) => ({ ...c, document: documentId })));
   return checks;

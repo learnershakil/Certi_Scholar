@@ -1,16 +1,16 @@
-import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { Inter } from 'next/font/google';
 import './globals.css';
+import { BrandingProvider } from '@/lib/branding';
 
-export const metadata: Metadata = {
-  title: 'CertiScholar',
-  description: 'Document extraction, consistency assessment and explainable scholarship recommendations',
-};
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body>
+        <BrandingProvider>{children}</BrandingProvider>
+      </body>
     </html>
   );
 }

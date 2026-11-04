@@ -29,7 +29,6 @@ export interface JobQueue {
   close(): Promise<void>;
 }
 
-const ATTEMPTS = 3;
 
 export class BullMqQueue implements JobQueue {
   private queues = new Map<string, Queue>();
@@ -42,8 +41,8 @@ export class BullMqQueue implements JobQueue {
     await q.add(name, data, {
       // BullMQ reserves ':' in custom ids; keep callers' readable ids but make them safe.
       jobId: opts.jobId?.replace(/:/g, '-'),
-      attempts: ATTEMPTS,
-      backoff: { type: 'exponential', delay: 5_000 },
+      attempts: config().JOB_ATTEMPTS,
+      backoff: { type: 'exponential', delay: config().JOB_BACKOFF_MS },
       removeOnComplete: { age: 86_400, count: 10_000 },
       removeOnFail: { age: 7 * 86_400 },
     });
@@ -62,12 +61,13 @@ export class InlineQueue implements JobQueue {
   async add(name: JobName, data: Record<string, string>) {
     const run = (async () => {
       await new Promise((r) => setImmediate(r));
-      for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      const attempts = config().JOB_ATTEMPTS;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
-          await this.handlers[name]?.(data, { attempt, finalAttempt: attempt === ATTEMPTS });
+          await this.handlers[name]?.(data, { attempt, finalAttempt: attempt === attempts });
           return;
         } catch (err) {
-          if (err instanceof PermanentJobError || attempt === ATTEMPTS) {
+          if (err instanceof PermanentJobError || attempt === attempts) {
             logger.warn({ name, err: (err as Error).message }, 'inline job failed');
             return;
           }
@@ -94,7 +94,8 @@ export function redisConnection(): ConnectionOptions {
 }
 
 export function startWorkers(handlers: Record<JobName, JobHandler>, queues: string[] = Object.values(JOB_QUEUES)) {
-  const concurrency: Record<string, number> = { ocr: 4, analysis: 8, verification: 4, evaluation: 8, maintenance: 1 };
+  const c = config();
+  const concurrency: Record<string, number> = { ocr: c.OCR_CONCURRENCY, maintenance: 1 };
   return [...new Set(queues)].map((qName) => {
     const worker = new Worker(
       qName,
@@ -107,7 +108,7 @@ export function startWorkers(handlers: Record<JobName, JobHandler>, queues: stri
           throw err;
         }
       },
-      { connection: redisConnection(), concurrency: concurrency[qName] ?? 2 },
+      { connection: redisConnection(), concurrency: concurrency[qName] ?? c.WORKER_CONCURRENCY },
     );
     worker.on('failed', (job, err) => logger.warn({ queue: qName, job: job?.name, id: job?.id, err: err.message }, 'job failed'));
     return worker;

@@ -91,7 +91,7 @@ const summary = (d: InstanceType<typeof DocumentModel>) => ({
 documents.get('/', async (req, res) => {
   const filter: Record<string, unknown> = await documentScope(actor(req));
   if (typeof req.query.status === 'string') filter.status = req.query.status;
-  const docs = await DocumentModel.find(filter).sort({ createdAt: -1 }).limit(200);
+  const docs = await DocumentModel.find(filter).sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE);
   res.json(docs.map(summary));
 });
 
@@ -107,7 +107,7 @@ documents.get('/review-queue', requireRole('verifier', 'admin'), async (req, res
   const filter: Record<string, unknown> = { $and: [QUEUE_WORK, me.role === 'verifier' ? claimable(me.id) : {}] };
   const docs = await DocumentModel.find(filter)
     .sort({ createdAt: 1 })
-    .limit(200)
+    .limit(config().LIST_PAGE_SIZE)
     .lean();
   const counts = await ExtractedFieldModel.aggregate([
     { $match: { document: { $in: docs.map((d) => d._id) }, status: 'needs_review' } },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FACT_CATALOG, type FactType } from './facts.js';
+import { FACT_CATALOG, type FactText, type FactType } from './facts.js';
 
 /**
  * Scholarship rule engine (M8). Rules are data: nested AND/OR groups of conditions over named facts.
@@ -98,18 +98,18 @@ export function validateRule(node: RuleNode, depth = 0, path = 'root'): string[]
 
 const fmt = (v: unknown) => (Array.isArray(v) ? v.join(', ') : v === undefined || v === null ? '—' : String(v));
 
-function evaluateCondition(node: Extract<RuleNode, { type: 'condition' }>, facts: FactSet): NodeResult {
-  const def = FACT_CATALOG[node.fact];
-  const label = node.label || `${def?.label ?? node.fact} ${OPERATOR_TEXT[node.operator]}${node.value !== undefined ? ` ${fmt(node.value)}` : ''}`;
+function evaluateCondition(node: Extract<RuleNode, { type: 'condition' }>, facts: FactSet, text: FactText): NodeResult {
+  const name = text[node.fact]?.label || node.fact;
+  const label = node.label || `${name} ${OPERATOR_TEXT[node.operator]}${node.value !== undefined ? ` ${fmt(node.value)}` : ''}`;
   const actual = facts[node.fact];
   const base = { type: 'condition' as const, label, fact: node.fact, operator: node.operator, expected: node.value, actual };
 
   if (node.operator === 'exists') {
     const ok = actual !== undefined && actual !== null;
-    return { ...base, outcome: ok ? 'pass' : 'fail', reason: ok ? `${def?.label ?? node.fact} is available` : `${def?.label ?? node.fact} is not available` };
+    return { ...base, outcome: ok ? 'pass' : 'fail', reason: ok ? `${name} is available` : `${name} is not available` };
   }
   if (actual === undefined || actual === null) {
-    return { ...base, outcome: 'unknown', reason: `${def?.label ?? node.fact} is not available from the submitted documents` };
+    return { ...base, outcome: 'unknown', reason: `${name} is not available from the submitted documents` };
   }
 
   const v = node.value as never;
@@ -130,14 +130,15 @@ function evaluateCondition(node: Extract<RuleNode, { type: 'condition' }>, facts
   return {
     ...base,
     outcome: ok ? 'pass' : 'fail',
-    reason: `${def?.label ?? node.fact} is ${fmt(actual)}; required: ${OPERATOR_TEXT[node.operator]}${node.value !== undefined ? ` ${fmt(node.value)}` : ''}`,
+    reason: `${name} is ${fmt(actual)}; required: ${OPERATOR_TEXT[node.operator]}${node.value !== undefined ? ` ${fmt(node.value)}` : ''}`,
   };
 }
 
-export function evaluate(node: RuleNode, facts: FactSet): NodeResult {
-  if (node.type === 'condition') return evaluateCondition(node, facts);
+/** `text` gives facts their display names in the explanation; without it the fact key is shown. */
+export function evaluate(node: RuleNode, facts: FactSet, text: FactText = {}): NodeResult {
+  if (node.type === 'condition') return evaluateCondition(node, facts, text);
 
-  const children = node.children.map((c) => evaluate(c, facts));
+  const children = node.children.map((c) => evaluate(c, facts, text));
   const outcomes = children.map((c) => c.outcome);
   let outcome: Outcome;
   if (node.op === 'AND') outcome = outcomes.includes('fail') ? 'fail' : outcomes.includes('unknown') ? 'unknown' : 'pass';

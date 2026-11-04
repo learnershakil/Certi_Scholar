@@ -6,7 +6,7 @@ import { ApiError, patch, post } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import { dateTime, docType, humanize, pct } from '@/lib/format';
 import type { DocumentDetail, ExtractedField, TimelineEntry } from '@/lib/types';
-import { useMe } from '@/components/AppShell';
+import { useDocTypes, useMe } from '@/components/AppShell';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { FieldList } from '@/components/FieldList';
 import { StageTracker, Timeline } from '@/components/Progress';
@@ -111,7 +111,8 @@ export default function DocumentPage() {
   const preview = usePreviewUrl(id, accessible && doc.data!.status !== 'purged');
   const [active, setActive] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>();
-  const [newType, setNewType] = useState('marksheet');
+  const [newType, setNewType] = useState<string>();
+  const docTypes = useDocTypes();
 
   const status = doc.data?.status;
   const refreshAll = useCallback(() => {
@@ -159,6 +160,7 @@ export default function DocumentPage() {
   const staff = me.role === 'verifier' || me.role === 'admin';
   const editable = staff && (me.role === 'admin' || d.assignedTo === me.id) && d.status !== 'purged';
   const pending = fields.data?.filter((f) => f.status === 'needs_review').length ?? 0;
+  const chosenType = newType ?? d.documentType ?? docTypes[0]?.code ?? '';
 
   return (
     <>
@@ -181,12 +183,10 @@ export default function DocumentPage() {
             <>
               {!ACTIVE.includes(d.status) && (
                 <>
-                  <select className="select" style={{ width: 200 }} value={newType} onChange={(e) => setNewType(e.target.value)} aria-label="Change document type">
-                    <option value="marksheet">Statement of marks</option>
-                    <option value="income_certificate">Income certificate</option>
-                    <option value="identity">Identity document</option>
+                  <select className="select" style={{ width: 200 }} value={chosenType} onChange={(e) => setNewType(e.target.value)} aria-label="Change document type">
+                    {docTypes.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
                   </select>
-                  <button className="btn" disabled={newType === d.documentType} onClick={() => run(() => post(`/documents/${id}/type`, { documentType: newType, reason: 'Set by officer after visual inspection' }))}>
+                  <button className="btn" disabled={chosenType === d.documentType} onClick={() => run(() => post(`/documents/${id}/type`, { documentType: chosenType, reason: 'Set by officer after visual inspection' }))}>
                     Change type
                   </button>
                 </>
@@ -222,12 +222,10 @@ export default function DocumentPage() {
             <div className="row-between">
               <span>The document type could not be determined with confidence. Set it to continue extraction.</span>
               <div className="row">
-                <select className="select" value={newType} onChange={(e) => setNewType(e.target.value)} aria-label="Document type">
-                  <option value="marksheet">Statement of marks</option>
-                  <option value="income_certificate">Income certificate</option>
-                  <option value="identity">Identity document</option>
+                <select className="select" value={chosenType} onChange={(e) => setNewType(e.target.value)} aria-label="Document type">
+                  {docTypes.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
                 </select>
-                <button className="btn btn-sm" onClick={() => run(() => post(`/documents/${id}/type`, { documentType: newType, reason: 'Set by officer after visual inspection' }))}>
+                <button className="btn btn-sm" onClick={() => run(() => post(`/documents/${id}/type`, { documentType: chosenType, reason: 'Set by officer after visual inspection' }))}>
                   Set type
                 </button>
               </div>

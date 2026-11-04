@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ScholarshipModel, ScholarshipRuleModel } from '../models/scholarship.js';
+import { DocumentTypeModel } from '../models/document.js';
 import { actor, parse, requireRole } from '../lib/http.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
-import { FACT_CATALOG } from '../domain/facts.js';
+import { describeFacts, type FactText } from '../domain/facts.js';
+import { getSettings } from '../models/system.js';
 import { evaluate, OPERATORS, ruleNodeSchema, validateRule } from '../domain/rules.js';
 
 export const scholarships = Router();
@@ -16,7 +18,7 @@ const scholarshipBody = z.object({
   sponsor: z.string().max(200).optional(),
   amount: z.number().nonnegative().optional(),
   deadline: z.coerce.date().optional(),
-  requiredDocuments: z.array(z.enum(['marksheet', 'income_certificate', 'identity'])).default([]),
+  requiredDocuments: z.array(z.string()).default([]),
   officers: z.array(z.string()).default([]),
   active: z.boolean().default(true),
 });
@@ -26,8 +28,16 @@ scholarships.get('/', async (req, res) => {
   res.json(await ScholarshipModel.find(filter).sort({ name: 1 }).populate('officers', 'name email').lean());
 });
 
+/** Required documents must be active document types, which administrators manage as data. */
+async function assertKnownTypes(codes?: string[]) {
+  if (!codes?.length) return;
+  const known = await DocumentTypeModel.countDocuments({ code: { $in: codes }, active: true });
+  if (known !== new Set(codes).size) throw badRequest('Unknown document type in requiredDocuments');
+}
+
 scholarships.post('/', requireRole('admin'), async (req, res) => {
   const body = parse(scholarshipBody, req.body);
+  await assertKnownTypes(body.requiredDocuments);
   const s = await ScholarshipModel.create(body);
   await audit(actor(req), 'scholarship.created', 'Scholarship', s._id, { code: s.code });
   res.status(201).json(s);
@@ -35,6 +45,7 @@ scholarships.post('/', requireRole('admin'), async (req, res) => {
 
 scholarships.patch('/:id', requireRole('admin'), async (req, res) => {
   const body = parse(scholarshipBody.partial(), req.body);
+  await assertKnownTypes(body.requiredDocuments);
   const s = await ScholarshipModel.findByIdAndUpdate(req.params.id, body, { returnDocument: 'after' });
   if (!s) throw notFound('Scholarship');
   await audit(actor(req), 'scholarship.updated', 'Scholarship', s._id, body);
@@ -42,8 +53,8 @@ scholarships.patch('/:id', requireRole('admin'), async (req, res) => {
 });
 
 /** The vocabulary for the no-code builder. */
-scholarships.get('/facts', (_req, res) => {
-  res.json({ facts: FACT_CATALOG, operators: OPERATORS });
+scholarships.get('/facts', async (_req, res) => {
+  res.json({ facts: describeFacts((await getSettings()).factText as FactText), operators: OPERATORS });
 });
 
 scholarships.get('/rules', requireRole('admin', 'scholarship_officer'), async (_req, res) => {
@@ -53,11 +64,11 @@ scholarships.get('/rules', requireRole('admin', 'scholarship_officer'), async (_
 const testBody = z.object({ root: ruleNodeSchema, facts: z.record(z.string(), z.unknown()) });
 
 /** Test harness: evaluate a draft rule against a hypothetical applicant without saving anything. */
-scholarships.post('/rules/test', requireRole('admin'), (req, res) => {
+scholarships.post('/rules/test', requireRole('admin'), async (req, res) => {
   const body = parse(testBody, req.body);
   const problems = validateRule(body.root);
   if (problems.length) throw badRequest('Rule is invalid', problems);
-  res.json(evaluate(body.root, body.facts));
+  res.json(evaluate(body.root, body.facts, (await getSettings()).factText as FactText));
 });
 
 scholarships.get('/:id/rules', requireRole('admin', 'scholarship_officer'), async (req, res) => {

@@ -1,0 +1,84 @@
+[
+  {
+    "code": "marksheet",
+    "name": "Statement of Marks",
+    "keywords": [
+      {
+        "term": "statement of marks|marksheet|mark sheet|grade sheet",
+        "weight": 3
+      },
+      {
+        "term": "marks obtained|percentage marks|total marks|grand total",
+        "weight": 2
+      },
+      {
+        "term": "roll number|roll no|unique id|index no",
+        "weight": 2
+      },
+      {
+        "term": "percentage",
+        "weight": 1
+      },
+      {
+        "term": "subject",
+        "weight": 1
+      },
+      {
+        "term": "board|council|university",
+        "weight": 1
+      },
+      {
+        "term": "examination",
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "code": "income_certificate",
+    "name": "Income Certificate",
+    "keywords": [
+      {
+        "term": "income certificate",
+        "weight": 3
+      },
+      {
+        "term": "annual family income",
+        "weight": 2
+      },
+      {
+        "term": "tahsildar",
+        "weight": 1
+      },
+      {
+        "term": "certificate no",
+        "weight": 1
+      },
+      {
+        "term": "issuing authority",
+        "weight": 1
+      }
+    ]
+  },
+  {
+    "code": "identity",
+    "name": "Identity Document",
+    "keywords": [
+      {
+        "term": "identity card",
+        "weight": 3
+      },
+      {
+        "term": "date of birth",
+        "weight": 2
+      },
+      {
+        "term": "id number",
+        "weight": 2
+      },
+      {
+        "term": "gender",
+        "weight": 1
+      }
+    ]
+  }
+]

@@ -3,13 +3,16 @@
 import { useState } from 'react';
 import { patch, post } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
-import { ROLE_LABEL } from '@/lib/format';
+import { roleLabel, useBranding } from '@/lib/branding';
 import type { Role } from '@/lib/types';
 import { Card, ErrorText, PageHead, StatusPill } from '@/components/ui';
 
 interface User { _id: string; name: string; email: string; role: Role; active: boolean }
 
+const ROLES: Role[] = ['student', 'verifier', 'scholarship_officer', 'admin'];
+
 export default function UsersPage() {
+  const { roleLabels } = useBranding();
   const users = useApi<User[]>('/admin/users');
   const [form, setForm] = useState({ name: '', email: '', role: 'verifier' as Role, password: '' });
   const [error, setError] = useState<string>();
@@ -38,7 +41,7 @@ export default function UsersPage() {
                   <td>{u.name}<div className="small faint">{u.email}</div></td>
                   <td>
                     <select className="select" style={{ width: 200 }} value={u.role} onChange={(e) => run(() => patch(`/admin/users/${u._id}`, { role: e.target.value }))} aria-label={`Role for ${u.name}`}>
-                      {Object.entries(ROLE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      {ROLES.map((r) => <option key={r} value={r}>{roleLabel(roleLabels, r)}</option>)}
                     </select>
                   </td>
                   <td><StatusPill status={u.active ? 'pass' : 'not_applicable'} label={u.active ? 'Active' : 'Disabled'} /></td>
@@ -55,7 +58,7 @@ export default function UsersPage() {
           <div className="form-row"><input className="input" placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} aria-label="Email" /></div>
           <div className="form-row">
             <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} aria-label="Role">
-              {Object.entries(ROLE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{roleLabel(roleLabels, r)}</option>)}
             </select>
           </div>
           <div className="form-row"><input className="input" type="password" placeholder="Initial password (min 10 chars)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} aria-label="Initial password" /></div>

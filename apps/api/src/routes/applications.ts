@@ -8,6 +8,7 @@ import { applicationScope, loadApplication } from '../lib/access.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit, notify, timeline } from '../lib/events.js';
 import { jobQueue } from '../pipeline/queue.js';
+import { config } from '../config.js';
 import { evaluateApplication } from '../services/recommendation.js';
 
 export const applications = Router();
@@ -35,7 +36,7 @@ applications.get('/', async (req, res) => {
   res.json(
     await ApplicationModel.find(filter)
       .sort({ createdAt: -1 })
-      .limit(500)
+      .limit(config().LIST_PAGE_SIZE)
       .populate('student', 'name email profile')
       .populate('scholarship', 'name code')
       .populate('latestRecommendation', 'outcome summary createdAt')

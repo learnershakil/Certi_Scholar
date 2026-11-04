@@ -11,6 +11,8 @@ Object.assign(process.env, {
   QUEUE_DRIVER: 'inline',
   MALWARE_SCANNER: 'signature',
   MAX_UPLOAD_BYTES: String(2 * 1024 * 1024),
+  SEED_DEMO: 'true',
+  SEED_DEMO_PASSWORD: 'test-demo-password-2026',
 });
 // Keeps the mongod binary on a short path (Windows MAX_PATH).
 process.env.MONGOMS_DOWNLOAD_DIR ??= join(homedir(), '.cache', 'mongodb-binaries');

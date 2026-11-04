@@ -3,29 +3,35 @@ import type { VerificationStatus } from '../models/document.js';
 export type FactType = 'number' | 'boolean' | 'enum' | 'string';
 
 export interface FactDefinition {
-  label: string;
   type: FactType;
   options?: string[];
-  description: string;
 }
 
-/** The vocabulary the no-code rule builder offers. Adding a fact is a code change; rules over facts are not. */
+/** Labels and descriptions shown for each fact; stored in Settings and edited by administrators. */
+export type FactText = Record<string, { label?: string; description?: string }>;
+
+/**
+ * The facts the rule builder offers and how each may be compared. Adding a fact is a code change because
+ * deriveFacts() must compute it; what a fact is called is not (see FactText).
+ */
 export const FACT_CATALOG: Record<string, FactDefinition> = {
-  'applicant.category': { label: 'Applicant category', type: 'enum', options: ['GEN', 'EWS', 'OBC', 'SC', 'ST'], description: 'Self-declared reservation category' },
-  'applicant.gender': { label: 'Applicant gender', type: 'enum', options: ['female', 'male', 'other'], description: 'Self-declared' },
-  'applicant.state': { label: 'State of domicile', type: 'string', description: 'Self-declared' },
-  'marksheet.percentage': { label: 'Aggregate percentage', type: 'number', description: 'Recomputed from subject marks when available, otherwise the printed value' },
-  'marksheet.examYear': { label: 'Year of examination', type: 'number', description: 'From the marksheet' },
-  'marksheet.consistent': { label: 'Marksheet internally consistent', type: 'boolean', description: 'Totals and percentage agree with subject marks' },
-  'income.annualIncome': { label: 'Annual family income (INR)', type: 'number', description: 'From the income certificate' },
-  'identity.provided': { label: 'Identity document provided', type: 'boolean', description: 'A processed identity document is attached' },
-  'documents.reviewComplete': { label: 'All fields reviewed', type: 'boolean', description: 'No extracted field is awaiting human review' },
-  'documents.authenticityEstablished': {
-    label: 'Authenticity confirmed by issuing authority',
-    type: 'boolean',
-    description: 'Every attached document was confirmed by an authorised source or by an officer contacting one. Simulated checks never count.',
-  },
+  'applicant.category': { type: 'enum', options: ['GEN', 'EWS', 'OBC', 'SC', 'ST'] },
+  'applicant.gender': { type: 'enum', options: ['female', 'male', 'other'] },
+  'applicant.state': { type: 'string' },
+  'marksheet.percentage': { type: 'number' },
+  'marksheet.examYear': { type: 'number' },
+  'marksheet.consistent': { type: 'boolean' },
+  'income.annualIncome': { type: 'number' },
+  'identity.provided': { type: 'boolean' },
+  'documents.reviewComplete': { type: 'boolean' },
+  'documents.authenticityEstablished': { type: 'boolean' },
 };
+
+/** Catalog with its current wording, for the rule builder. A fact without a label shows its key. */
+export const describeFacts = (text: FactText = {}) =>
+  Object.fromEntries(
+    Object.entries(FACT_CATALOG).map(([key, def]) => [key, { ...def, label: text[key]?.label || key, description: text[key]?.description ?? '' }]),
+  );
 
 export interface DocumentFacts {
   documentId: string;

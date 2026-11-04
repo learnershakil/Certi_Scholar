@@ -83,14 +83,14 @@ describe('administration', () => {
   });
 
   it('blocks enabling the simulated provider in production', async () => {
-    Object.assign(process.env, { NODE_ENV: 'production', QUEUE_DRIVER: 'bullmq', MALWARE_SCANNER: 'clamav' });
+    Object.assign(process.env, { NODE_ENV: 'production', QUEUE_DRIVER: 'bullmq', MALWARE_SCANNER: 'clamav', SEED_DEMO: 'false' });
     resetConfig();
     try {
       const res = await admin.put('/api/v1/admin/settings').send({ verificationProvider: 'simulated' }).expect(409);
       expect(res.body.error.message).toMatch(/blocked in production/);
       expect((await admin.get('/api/v1/admin/settings').expect(200)).body.simulatedProviderAllowed).toBe(false);
     } finally {
-      Object.assign(process.env, { NODE_ENV: 'test', QUEUE_DRIVER: 'inline', MALWARE_SCANNER: 'signature' });
+      Object.assign(process.env, { NODE_ENV: 'test', QUEUE_DRIVER: 'inline', MALWARE_SCANNER: 'signature', SEED_DEMO: 'true' });
       resetConfig();
     }
   });
@@ -104,7 +104,7 @@ describe('administration', () => {
   });
 
   it('manages user access and prevents self-lockout', async () => {
-    const created = (await admin.post('/api/v1/admin/users').send({ email: 'v2@certischolar.local', name: 'New Verifier', role: 'verifier', password: 'LongEnough#2026' }).expect(201)).body;
+    const created = (await admin.post('/api/v1/admin/users').send({ email: 'new.verifier@example.test', name: 'New Verifier', role: 'verifier', password: 'LongEnough#2026' }).expect(201)).body;
     await admin.patch(`/api/v1/admin/users/${created.id}`).send({ active: false }).expect(200);
     const me = (await admin.get('/api/v1/auth/me')).body;
     await admin.patch(`/api/v1/admin/users/${me.id}`).send({ active: false }).expect(409);

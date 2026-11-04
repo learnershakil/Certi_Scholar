@@ -1,15 +1,35 @@
 // Minimal API client for scripts: cookie session, JSON helpers, polling.
+import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const BASE = process.env.BASE_URL ?? 'http://localhost:4000';
-export const PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo#Pass2026';
+
+const DEMO_USERS = JSON.parse(readFileSync(join(fileURLToPath(new URL('.', import.meta.url)), '..', 'apps', 'api', 'seed', 'demo-users.json'), 'utf8'));
+/** Demo account email by its short name (before the @), from apps/api/seed/demo-users.json. */
+export function demoEmail(who) {
+  const user = DEMO_USERS.find((u) => u.email.split('@')[0] === who);
+  if (!user) throw new Error(`No demo user "${who}" in apps/api/seed/demo-users.json`);
+  return user.email;
+}
+
+/** Demo password: DEMO_PASSWORD if set, else SEED_DEMO_PASSWORD from the project's .env. */
+function demoPassword() {
+  if (process.env.DEMO_PASSWORD) return process.env.DEMO_PASSWORD;
+  const envFile = join(fileURLToPath(new URL('.', import.meta.url)), '..', '.env');
+  const line = existsSync(envFile) && readFileSync(envFile, 'utf8').split(/\r?\n/).find((l) => l.startsWith('SEED_DEMO_PASSWORD='));
+  const value = line && line.slice('SEED_DEMO_PASSWORD='.length).split(/\s+#/)[0].trim();
+  if (!value) throw new Error('Set DEMO_PASSWORD, or SEED_DEMO_PASSWORD in .env (node scripts/init-env.mjs creates it)');
+  return value;
+}
+export const PASSWORD = demoPassword();
 
 export async function session(user) {
   const res = await fetch(`${BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: `${user}@certischolar.local`, password: PASSWORD }),
+    body: JSON.stringify({ email: demoEmail(user), password: PASSWORD }),
   });
   if (!res.ok) throw new Error(`login ${user}: ${res.status}`);
   const cookie = res.headers.get('set-cookie').split(';')[0];

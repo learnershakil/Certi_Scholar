@@ -1,19 +1,12 @@
-export const DOC_TYPE_LABEL: Record<string, string> = {
-  marksheet: 'Statement of marks',
-  income_certificate: 'Income certificate',
-  identity: 'Identity document',
-};
-
-export const ROLE_LABEL: Record<string, string> = {
-  student: 'Student',
-  verifier: 'Verification officer',
-  scholarship_officer: 'Scholarship officer',
-  admin: 'Administrator',
+/** Document type names, loaded once from /api/v1/document-types when the app shell starts. */
+let docTypeNames: Record<string, string> = {};
+export const setDocTypeNames = (types: Array<{ code: string; name: string }>) => {
+  docTypeNames = Object.fromEntries(types.map((t) => [t.code, t.name]));
 };
 
 export const humanize = (s?: string | null) => (s ? s.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '—');
 
-export const docType = (t?: string | null) => (t ? DOC_TYPE_LABEL[t] ?? humanize(t) : 'Unclassified');
+export const docType = (t?: string | null) => (t ? docTypeNames[t] ?? humanize(t) : 'Unclassified');
 
 export const dateTime = (iso?: string) =>
   iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';

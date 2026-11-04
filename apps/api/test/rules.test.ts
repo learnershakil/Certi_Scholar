@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate, flattenResult, ruleNodeSchema, validateRule, type RuleNode } from '../src/domain/rules.js';
-import { RULES } from '../src/seedData.js';
+import { RULES, SETTINGS_DEFAULTS } from '../src/seedData.js';
+import type { FactText } from '../src/domain/facts.js';
+
+const FACT_TEXT = SETTINGS_DEFAULTS.factText as FactText;
 
 const cond = (fact: string, operator: string, value?: unknown) => ({ type: 'condition', fact, operator, value }) as RuleNode;
 
@@ -58,7 +61,7 @@ describe('rule engine — AND/OR with three-valued logic', () => {
   });
 
   it('explains every condition with actual and expected values', () => {
-    const r = evaluate(and, { 'marksheet.percentage': 70, 'income.annualIncome': 500 });
+    const r = evaluate(and, { 'marksheet.percentage': 70, 'income.annualIncome': 500 }, FACT_TEXT);
     const rows = flattenResult(r);
     expect(rows.map((x) => x.ref)).toEqual(['root', '1', '2']);
     expect(rows[2].result).toMatchObject({ outcome: 'fail', actual: 500, expected: 100 });
@@ -125,5 +128,13 @@ describe('live scholarship fixture set', () => {
   ];
   it.each(fixtures)('%s fixture %#', (code, facts, expected) => {
     expect(evaluate(RULES[code], facts).outcome).toBe(expected);
+  });
+});
+
+describe('fact wording', () => {
+  it('uses the configured label, and the fact key when none is configured', () => {
+    const c: RuleNode = { type: 'condition', fact: 'income.annualIncome', operator: 'lte', value: 100 };
+    expect(evaluate(c, { 'income.annualIncome': 50 }, { 'income.annualIncome': { label: 'Household income' } }).reason).toBe('Household income is 50; required: is at most 100');
+    expect(evaluate(c, { 'income.annualIncome': 50 }).reason).toBe('income.annualIncome is 50; required: is at most 100');
   });
 });

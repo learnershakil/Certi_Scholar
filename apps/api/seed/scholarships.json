@@ -1,0 +1,111 @@
+[
+  {
+    "code": "MCM-2026",
+    "name": "Merit-cum-Means Scholarship 2026",
+    "sponsor": "Office of Student Services",
+    "amount": 50000,
+    "description": "For students with at least 60% aggregate and family income up to ₹2.5 lakh per year.",
+    "requiredDocuments": [
+      "marksheet",
+      "income_certificate"
+    ],
+    "officers": [
+      "officer@certischolar.local"
+    ],
+    "rule": {
+      "type": "group",
+      "op": "AND",
+      "label": "Merit-cum-Means eligibility",
+      "children": [
+        {
+          "type": "condition",
+          "fact": "marksheet.percentage",
+          "operator": "gte",
+          "value": 60
+        },
+        {
+          "type": "condition",
+          "fact": "marksheet.consistent",
+          "operator": "is_true"
+        },
+        {
+          "type": "condition",
+          "fact": "income.annualIncome",
+          "operator": "lte",
+          "value": 250000
+        },
+        {
+          "type": "condition",
+          "fact": "documents.reviewComplete",
+          "operator": "is_true"
+        },
+        {
+          "type": "condition",
+          "fact": "documents.authenticityEstablished",
+          "operator": "is_true"
+        }
+      ]
+    }
+  },
+  {
+    "code": "GSTEM-2026",
+    "name": "Women in STEM Scholarship 2026",
+    "sponsor": "Alumni Endowment Fund",
+    "amount": 75000,
+    "description": "For women students with at least 75% aggregate entering science and engineering programmes.",
+    "requiredDocuments": [
+      "marksheet",
+      "income_certificate",
+      "identity"
+    ],
+    "officers": [
+      "officer@certischolar.local"
+    ],
+    "rule": {
+      "type": "group",
+      "op": "AND",
+      "label": "Women in STEM eligibility",
+      "children": [
+        {
+          "type": "condition",
+          "fact": "applicant.gender",
+          "operator": "eq",
+          "value": "female"
+        },
+        {
+          "type": "condition",
+          "fact": "marksheet.percentage",
+          "operator": "gte",
+          "value": 75
+        },
+        {
+          "type": "condition",
+          "fact": "identity.provided",
+          "operator": "is_true"
+        },
+        {
+          "type": "group",
+          "op": "OR",
+          "label": "Means test or category",
+          "children": [
+            {
+              "type": "condition",
+              "fact": "income.annualIncome",
+              "operator": "lte",
+              "value": 800000
+            },
+            {
+              "type": "condition",
+              "fact": "applicant.category",
+              "operator": "in",
+              "value": [
+                "SC",
+                "ST"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

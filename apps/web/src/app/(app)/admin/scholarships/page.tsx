@@ -6,6 +6,7 @@ import { useApi } from '@/lib/useApi';
 import { dateTime, docType, inr } from '@/lib/format';
 import type { FactDefinition, NodeResult, RuleNode, Scholarship } from '@/lib/types';
 import { RuleBuilder } from '@/components/RuleBuilder';
+import { useDocTypes } from '@/components/AppShell';
 import { EvaluationTree } from '@/components/Progress';
 import { Card, ErrorText, Loading, Notice, PageHead, StatusPill } from '@/components/ui';
 
@@ -135,7 +136,8 @@ export default function ScholarshipsAdminPage() {
   const list = useApi<Scholarship[]>('/scholarships');
   const catalog = useApi<{ facts: Record<string, FactDefinition> }>('/scholarships/facts');
   const [selected, setSelected] = useState<string>();
-  const [form, setForm] = useState({ code: '', name: '', amount: '' });
+  const [form, setForm] = useState({ code: '', name: '', amount: '', required: [] as string[] });
+  const docTypes = useDocTypes();
   const [error, setError] = useState<string>();
   const current = list.data?.find((s) => s._id === (selected ?? list.data?.[0]?._id));
 
@@ -156,14 +158,23 @@ export default function ScholarshipsAdminPage() {
             <div className="form-row"><input className="input" placeholder="Code, e.g. HOSTEL-26" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} aria-label="Code" /></div>
             <div className="form-row"><input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-label="Name" /></div>
             <div className="form-row"><input className="input" type="number" placeholder="Amount (INR)" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} aria-label="Amount" /></div>
+            <div className="form-row">
+              <span className="label">Required documents</span>
+              {docTypes.map((t) => (
+                <label key={t.code} className="row small" style={{ padding: '2px 0' }}>
+                  <input type="checkbox" checked={form.required.includes(t.code)} onChange={(e) => setForm({ ...form, required: e.target.checked ? [...form.required, t.code] : form.required.filter((c) => c !== t.code) })} />
+                  {t.name}
+                </label>
+              ))}
+            </div>
             <ErrorText error={error} />
             <button
               className="btn"
               onClick={async () => {
                 setError(undefined);
                 try {
-                  const s = await post<Scholarship>('/scholarships', { code: form.code, name: form.name, amount: form.amount ? Number(form.amount) : undefined, requiredDocuments: ['marksheet', 'income_certificate'] });
-                  setForm({ code: '', name: '', amount: '' });
+                  const s = await post<Scholarship>('/scholarships', { code: form.code, name: form.name, amount: form.amount ? Number(form.amount) : undefined, requiredDocuments: form.required });
+                  setForm({ code: '', name: '', amount: '', required: [] });
                   await list.reload();
                   setSelected(s._id);
                 } catch (e) {

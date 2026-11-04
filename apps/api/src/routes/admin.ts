@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { isProduction } from '../config.js';
+import { config, isProduction } from '../config.js';
 import { DocumentTypeModel, ExtractionProfileModel } from '../models/document.js';
 import { AuditEntryModel, DocumentAccessLogModel, SettingsModel, VERIFICATION_PROVIDER_IDS, getSettings } from '../models/system.js';
 import { ROLES, UserModel } from '../models/user.js';
+import { FACT_CATALOG } from '../domain/facts.js';
 import { actor, parse, requireRole } from '../lib/http.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
@@ -22,6 +23,22 @@ const settingsBody = z.object({
   classificationThreshold: z.number().min(0.3).max(1),
   percentageTolerance: z.number().min(0).max(1),
   retentionDays: z.number().int().min(30).max(3650),
+  classificationMargin: z.number().min(0).max(0.5),
+  unreadableLineConfidence: z.number().min(0).max(1),
+  certificateValidityDays: z.number().int().min(1).max(3650),
+  minPlausibleAge: z.number().int().min(0).max(120),
+  branding: z.object({
+    appName: z.string().trim().min(1).max(60),
+    eyebrow: z.string().max(120),
+    headline: z.string().max(160),
+    lead: z.string().max(400),
+    points: z.array(z.string().max(160)).max(6),
+    footnote: z.string().max(200),
+    passwordHelp: z.string().max(200),
+  }).partial(),
+  roleLabels: z.record(z.string().refine((r) => (ROLES as readonly string[]).includes(r), 'Unknown role'), z.string().trim().min(1).max(40)),
+  factText: z.record(z.string().refine((k) => k in FACT_CATALOG, 'Unknown fact'), z.object({ label: z.string().trim().min(1).max(80), description: z.string().max(240) })),
+  maxPlausibleAge: z.number().int().min(1).max(150),
   verificationProvider: z.enum(VERIFICATION_PROVIDER_IDS),
   registryBaseUrl: z.string().url().optional().or(z.literal('')),
 }).partial();
@@ -33,7 +50,15 @@ admin.put('/settings', async (req, res) => {
     throw conflict('The simulated verification provider is blocked in production configuration');
   }
   const before = await getSettings();
-  const updated = await SettingsModel.findByIdAndUpdate('global', { ...body, updatedBy: me.id }, { returnDocument: 'after', upsert: true }).lean();
+  // Branding is saved field by field so changing one line of wording keeps the rest.
+  const { branding, roleLabels, factText, ...rest } = body;
+  const brandingPaths = Object.fromEntries(Object.entries(branding ?? {}).map(([k, v]) => [`branding.${k}`, v]));
+  // Label maps are merged with what is saved, so a request naming one role or fact leaves the others as they are.
+  const merged = {
+    ...(roleLabels && { roleLabels: { ...(before.roleLabels as object), ...roleLabels } }),
+    ...(factText && { factText: { ...(before.factText as object), ...factText } }),
+  };
+  const updated = await SettingsModel.findByIdAndUpdate('global', { $set: { ...rest, ...brandingPaths, ...merged, updatedBy: me.id } }, { returnDocument: 'after', upsert: true }).lean();
   await audit(me, 'settings.updated', 'Settings', 'global', { before, after: body });
   res.json(updated);
 });
@@ -116,11 +141,11 @@ admin.get('/audit', async (req, res) => {
   const q: Record<string, unknown> = {};
   if (typeof req.query.action === 'string' && req.query.action) q.action = req.query.action;
   if (typeof req.query.entityId === 'string' && req.query.entityId) q.entityId = req.query.entityId;
-  res.json(await AuditEntryModel.find(q).sort({ createdAt: -1 }).limit(300).populate('actor', 'name email').lean());
+  res.json(await AuditEntryModel.find(q).sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE).populate('actor', 'name email').lean());
 });
 
 admin.get('/access-log', async (_req, res) => {
-  res.json(await DocumentAccessLogModel.find().sort({ createdAt: -1 }).limit(300).populate('actor', 'name role').populate('document', 'originalName').lean());
+  res.json(await DocumentAccessLogModel.find().sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE).populate('actor', 'name role').populate('document', 'originalName').lean());
 });
 
 admin.get('/health', async (_req, res) => {
