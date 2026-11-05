@@ -1,5 +1,5 @@
 import type { NodeResult, Stage, TimelineEntry } from '@/lib/types';
-import { dateTime, humanize } from '@/lib/format';
+import { dateTime, humanize, stageName } from '@/lib/format';
 import { StatusPill } from './ui';
 
 export function StageTracker({ stages }: { stages: Stage[] }) {
@@ -7,7 +7,8 @@ export function StageTracker({ stages }: { stages: Stage[] }) {
     <div className="stages" aria-label="Processing stages">
       {stages.map((s) => (
         <div key={s.name} className={`stage ${s.status}`} data-testid={`stage-${s.name}`}>
-          <div className="stage-name">{s.name === 'scan' ? 'Security scan' : s.name}</div>
+          <span className="stage-dot" aria-hidden />
+          <div className="stage-name">{stageName(s.name)}</div>
           <div className="muted">
             {humanize(s.status)}
             {s.attempts > 1 ? ` · ${s.attempts} attempts` : ''}
@@ -26,8 +27,8 @@ export function Timeline({ entries }: { entries: TimelineEntry[] }) {
       {entries.map((e) => (
         <li key={e._id} className={e.status === 'failed' ? 't-failed' : 't-done'}>
           <div className="row-between">
-            <strong style={{ textTransform: 'capitalize' }}>
-              {e.stage} · {humanize(e.status)}
+            <strong>
+              {stageName(e.stage)} · {humanize(e.status).toLowerCase()}
             </strong>
             <span className="small faint">{dateTime(e.createdAt)}</span>
           </div>

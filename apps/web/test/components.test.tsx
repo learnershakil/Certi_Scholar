@@ -56,8 +56,14 @@ describe('DocumentViewer bounding-box overlay', () => {
   });
 
   it('shows a placeholder without a preview', () => {
-    render(<DocumentViewer fields={FIELDS} onSelect={() => undefined} />);
+    render(<DocumentViewer src={null} fields={FIELDS} onSelect={() => undefined} />);
     expect(screen.getByText('Preview unavailable')).toBeInTheDocument();
+  });
+
+  it('shows loading, not "unavailable", while the preview link is being fetched', () => {
+    render(<DocumentViewer fields={FIELDS} onSelect={() => undefined} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading preview');
+    expect(screen.queryByText('Preview unavailable')).toBeNull();
   });
 });
 
@@ -200,6 +206,7 @@ describe('explanations and status', () => {
     expect(screen.getByTestId('stage-ocr')).toHaveClass('failed');
     expect(screen.getByText('Failed · 3 attempts')).toBeInTheDocument();
     expect(screen.getByText('Security scan')).toBeInTheDocument();
+    expect(screen.getByText('OCR')).toBeInTheDocument(); // an acronym, not "Ocr"
   });
 
   it('colours status pills by meaning', () => {

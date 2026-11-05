@@ -10,9 +10,10 @@ const UserSchema = new Schema(
     role: { type: String, enum: ROLES, required: true },
     passwordHash: { type: String, required: true, select: false },
     active: { type: Boolean, default: true },
-    // Applicant profile, self-declared; used as rule facts and shown as such.
+    // Unset until the first sign-in, which is how the app knows to send someone to complete their profile.
+    lastLoginAt: Date,
+    // Applicant profile, self-declared; used as rule facts and shown as such. Gender and state are set once.
     profile: {
-      category: { type: String, enum: ['GEN', 'EWS', 'OBC', 'SC', 'ST'] },
       gender: { type: String, enum: ['female', 'male', 'other'] },
       state: String,
       phone: String,

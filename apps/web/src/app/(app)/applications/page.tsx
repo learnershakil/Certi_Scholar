@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { post } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import { dateTime, docType, inr } from '@/lib/format';
@@ -14,11 +14,24 @@ function Apply({ onDone }: { onDone: () => void }) {
   const scholarships = useApi<Scholarship[]>('/scholarships');
   const docs = useApi<DocumentSummary[]>('/documents');
   const [scholarshipId, setScholarshipId] = useState('');
+  // Preselect the scholarship chosen on the dashboard (?scholarship=<id>).
+  useEffect(() => setScholarshipId(new URLSearchParams(window.location.search).get('scholarship') ?? ''), []);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const scholarship = scholarships.data?.find((s) => s._id === scholarshipId);
-  const usable = docs.data?.filter((d) => !['rejected', 'purged'].includes(d.status)) ?? [];
+  const usable = useMemo(() => docs.data?.filter((d) => !['rejected', 'purged'].includes(d.status)) ?? [], [docs.data]);
+  const required = scholarship?.requiredDocuments ?? [];
+
+  // Choosing a scholarship attaches the newest document of each type it requires; the student can change the choice.
+  useEffect(() => {
+    if (!scholarship) return setSelected([]);
+    setSelected(scholarship.requiredDocuments.map((t) => usable.find((d) => d.documentType === t)?.id).filter((id): id is string => Boolean(id)));
+  }, [scholarship, usable]);
+
+  const attachedTypes = new Set(usable.filter((d) => selected.includes(d.id)).map((d) => d.documentType));
+  const missing = required.filter((t) => !attachedTypes.has(t));
+  const processing = usable.some((d) => !d.documentType && ['queued', 'processing'].includes(d.status));
 
   const submit = async () => {
     setBusy(true);
@@ -45,25 +58,58 @@ function Apply({ onDone }: { onDone: () => void }) {
             {scholarships.data?.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
           </select>
           {scholarship && (
-            <div className="small muted" style={{ marginTop: 8 }}>
-              {scholarship.description} Award {inr(scholarship.amount)}. Requires: {scholarship.requiredDocuments.map(docType).join(', ')}.
-            </div>
+            <>
+              <div className="notice" style={{ marginTop: 12 }}>
+                <div className="row-between"><strong>{inr(scholarship.amount)}</strong><Link className="small" href="/dashboard">Eligibility criteria</Link></div>
+                {scholarship.description && <div className="small" style={{ marginTop: 4 }}>{scholarship.description}</div>}
+              </div>
+              <span className="label" style={{ marginTop: 16 }}>Required documents</span>
+              <ul className="detail-docs" aria-label="Required documents">
+                {required.map((t) => {
+                  const have = attachedTypes.has(t);
+                  const uploaded = usable.some((d) => d.documentType === t);
+                  return (
+                    <li key={t}>
+                      <span>{docType(t)}</span>
+                      {have ? (
+                        <StatusPill status="success" tone="success" label="Attached" />
+                      ) : uploaded ? (
+                        <StatusPill status="warning" tone="warning" label="Select it on the right" />
+                      ) : (
+                        <Link href="/documents"><StatusPill status="danger" tone="danger" label="Not uploaded · upload" /></Link>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
         <div>
           <span className="label">Attach documents</span>
-          {usable.length === 0 && <div className="small muted">Upload documents first.</div>}
-          {usable.map((d) => (
-            <label key={d.id} className="row small" style={{ padding: '3px 0' }}>
-              <input type="checkbox" checked={selected.includes(d.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, d.id] : selected.filter((x) => x !== d.id))} />
-              {d.originalName} <span className="faint">· {docType(d.documentType)}</span>
-            </label>
-          ))}
+          {usable.length === 0 ? (
+            <div className="small muted">Upload documents first, on <Link href="/documents">My documents</Link>.</div>
+          ) : (
+            <div className="check-list">
+              {usable.map((d) => (
+                <label key={d.id}>
+                  <input type="checkbox" checked={selected.includes(d.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, d.id] : selected.filter((x) => x !== d.id))} />
+                  <span className="grow">{d.originalName}</span>
+                  <span className="small faint">{d.documentType ? docType(d.documentType) : 'Being identified…'}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <ErrorText error={error} />
-      <div className="row" style={{ marginTop: 12 }}>
-        <button className="btn btn-primary" disabled={busy || !scholarshipId || !selected.length} onClick={submit}>Submit application</button>
+      <div className="row wrap" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={busy || !scholarship || missing.length > 0} onClick={submit}>Submit application</button>
+        {scholarship && missing.length > 0 && (
+          <span className="small muted" role="status">
+            Attach {missing.map(docType).join(', ')} to apply.{processing ? ' A document you uploaded is still being identified; it can be attached once processed.' : ''}
+          </span>
+        )}
       </div>
     </Card>
   );
@@ -113,7 +159,7 @@ export default function ApplicationsPage() {
                     {me.role !== 'student' && (
                       <td>
                         <Link href={`/applications/${a._id}`}>{a.student.name}</Link>
-                        <div className="small faint">{a.student.profile?.category} · {a.student.profile?.state}</div>
+                        <div className="small faint">{[a.student.profile?.gender, a.student.profile?.state].filter(Boolean).join(' · ')}</div>
                       </td>
                     )}
                     <td>{me.role === 'student' ? <Link href={`/applications/${a._id}`}>{a.scholarship.name}</Link> : a.scholarship.name}</td>

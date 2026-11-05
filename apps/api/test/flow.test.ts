@@ -275,13 +275,21 @@ describe('applications and explainable recommendation (M8–M9)', () => {
     await other.post('/api/v1/applications').send({ scholarshipId: mcm._id, documentIds: [ids.marks] }).expect(400);
   });
 
-  it('explains a not-recommended outcome and missing documents', async () => {
+  it('refuses an application without every required document, and explains one that later loses a document', async () => {
     const gstem = (await student.get('/api/v1/scholarships')).body.find((s: { code: string }) => s.code === 'GSTEM-2026');
-    const app = (await student.post('/api/v1/applications').send({ scholarshipId: gstem._id, documentIds: [ids.marks] }).expect(201)).body;
+    const refused = await student.post('/api/v1/applications').send({ scholarshipId: gstem._id, documentIds: [ids.marks] }).expect(400);
+    expect(refused.body.error.details.missing).toEqual(['income_certificate', 'identity']);
+
+    const identity = await upload(student, 'identity', 'identity.png');
+    const app = (await student.post('/api/v1/applications').send({ scholarshipId: gstem._id, documentIds: [ids.marks, ids.income, identity] }).expect(201)).body;
     await h.queue.drain();
+
+    // A document removed after submission (e.g. by the retention policy) counts as missing again.
+    await DocumentModel.updateOne({ _id: identity }, { status: 'purged' });
+    await officer.post(`/api/v1/applications/${app._id}/recommendation`).expect(201);
     const rec = (await student.get(`/api/v1/applications/${app._id}/recommendation`).expect(200)).body;
-    expect(rec.outcome).toBe('needs_review'); // income unknown, identity missing
-    expect(rec.summary).toMatch(/Missing required document\(s\): income_certificate, identity/);
+    expect(rec.outcome).toBe('needs_review');
+    expect(rec.summary).toMatch(/Missing required document\(s\): identity/);
     expect(await NotificationModel.exists({ type: 'additional_document_needed' })).toBeTruthy();
   });
 

@@ -54,15 +54,29 @@ export default function UsersPage() {
           </table>
         </Card>
         <Card title="Add user">
-          <div className="form-row"><input className="input" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-label="Full name" /></div>
-          <div className="form-row"><input className="input" placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} aria-label="Email" /></div>
-          <div className="form-row">
-            <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} aria-label="Role">
-              {ROLES.map((r) => <option key={r} value={r}>{roleLabel(roleLabels, r)}</option>)}
-            </select>
-          </div>
-          <div className="form-row"><input className="input" type="password" placeholder="Initial password (min 10 chars)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} aria-label="Initial password" /></div>
-          <button className="btn btn-primary" onClick={() => run(async () => { await post('/admin/users', form); setForm({ name: '', email: '', role: 'verifier', password: '' }); })}>Create user</button>
+          {/* This creates someone else's account: autocomplete hints stop the browser filling in the admin's own sign-in. */}
+          <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post('/admin/users', form); setForm({ name: '', email: '', role: 'verifier', password: '' }); }); }}>
+            <div className="form-row">
+              <label className="label" htmlFor="new-user-name">Full name</label>
+              <input id="new-user-name" name="new-user-name" className="input" autoComplete="off" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            </div>
+            <div className="form-row">
+              <label className="label" htmlFor="new-user-email">Email</label>
+              <input id="new-user-email" name="new-user-email" className="input" type="email" autoComplete="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+            </div>
+            <div className="form-row">
+              <label className="label" htmlFor="new-user-role">Role</label>
+              <select id="new-user-role" className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
+                {ROLES.map((r) => <option key={r} value={r}>{roleLabel(roleLabels, r)}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="label" htmlFor="new-user-password">Initial password</label>
+              <input id="new-user-password" name="new-user-password" className="input" type="password" autoComplete="new-password" minLength={10} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+              <div className="small faint" style={{ marginTop: 4 }}>At least 10 characters. Share it with the person securely; they can change it under Profile &amp; password.</div>
+            </div>
+            <button type="submit" className="btn btn-primary">Create user</button>
+          </form>
         </Card>
       </div>
     </>

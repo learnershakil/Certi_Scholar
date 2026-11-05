@@ -95,9 +95,9 @@ reports.get('/awards.csv', async (req, res) => {
     filter.scholarship = new Types.ObjectId(req.query.scholarshipId);
   }
   const apps = await ApplicationModel.find(filter).populate('student', 'name email profile').populate('scholarship', 'code name amount').populate('decision.by', 'name').lean();
-  const rows = [['Application', 'Scholarship', 'Student', 'Email', 'Category', 'Amount', 'Decided by', 'Decided at', 'Note']];
+  const rows = [['Application', 'Scholarship', 'Student', 'Email', 'State', 'Amount', 'Decided by', 'Decided at', 'Note']];
   for (const a of apps as any[]) {
-    rows.push([a._id, a.scholarship?.code, a.student?.name, a.student?.email, a.student?.profile?.category, a.scholarship?.amount, a.decision?.by?.name, a.decision?.at?.toISOString(), a.decision?.note]);
+    rows.push([a._id, a.scholarship?.code, a.student?.name, a.student?.email, a.student?.profile?.state, a.scholarship?.amount, a.decision?.by?.name, a.decision?.at?.toISOString(), a.decision?.note]);
   }
   res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="award-list.csv"' });
   res.send(rows.map((r) => r.map(csv).join(',')).join('\r\n'));

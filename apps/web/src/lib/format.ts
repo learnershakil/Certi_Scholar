@@ -4,6 +4,9 @@ export const setDocTypeNames = (types: Array<{ code: string; name: string }>) =>
   docTypeNames = Object.fromEntries(types.map((t) => [t.code, t.name]));
 };
 
+const STAGE_NAMES: Record<string, string> = { scan: 'Security scan', ocr: 'OCR' };
+export const stageName = (s: string) => STAGE_NAMES[s] ?? humanize(s);
+
 export const humanize = (s?: string | null) => (s ? s.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '—');
 
 export const docType = (t?: string | null) => (t ? docTypeNames[t] ?? humanize(t) : 'Unclassified');

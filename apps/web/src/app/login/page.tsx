@@ -88,7 +88,8 @@ function LoginForm() {
     setError(undefined);
     try {
       const me = await post<Me>('/auth/login', { email, password, role });
-      router.replace(next?.startsWith('/') && !next.startsWith('//') ? next : HOME[me.role]);
+      if (me.firstLogin || me.profileComplete === false) router.replace('/profile?welcome=1');
+      else router.replace(next?.startsWith('/') && !next.startsWith('//') ? next : HOME[me.role]);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

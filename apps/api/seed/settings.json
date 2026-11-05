@@ -19,15 +19,38 @@
     "admin": "Administrator"
   },
   "factText": {
-    "applicant.category": { "label": "Applicant category", "description": "Self-declared reservation category" },
-    "applicant.gender": { "label": "Applicant gender", "description": "Self-declared" },
-    "applicant.state": { "label": "State of domicile", "description": "Self-declared" },
-    "marksheet.percentage": { "label": "Aggregate percentage", "description": "Recomputed from subject marks when available, otherwise the printed value" },
-    "marksheet.examYear": { "label": "Year of examination", "description": "From the marksheet" },
-    "marksheet.consistent": { "label": "Marksheet internally consistent", "description": "Totals and percentage agree with subject marks" },
-    "income.annualIncome": { "label": "Annual family income (INR)", "description": "From the income certificate" },
-    "identity.provided": { "label": "Identity document provided", "description": "A processed identity document is attached" },
-    "documents.reviewComplete": { "label": "All fields reviewed", "description": "No extracted field is awaiting human review" },
+    "applicant.gender": {
+      "label": "Applicant gender",
+      "description": "Self-declared"
+    },
+    "applicant.state": {
+      "label": "State of domicile",
+      "description": "Self-declared"
+    },
+    "marksheet.percentage": {
+      "label": "Aggregate percentage",
+      "description": "Recomputed from subject marks when available, otherwise the printed value"
+    },
+    "marksheet.examYear": {
+      "label": "Year of examination",
+      "description": "From the marksheet"
+    },
+    "marksheet.consistent": {
+      "label": "Marksheet internally consistent",
+      "description": "Totals and percentage agree with subject marks"
+    },
+    "income.annualIncome": {
+      "label": "Annual family income (INR)",
+      "description": "From the income certificate"
+    },
+    "identity.provided": {
+      "label": "Identity document provided",
+      "description": "A processed identity document is attached"
+    },
+    "documents.reviewComplete": {
+      "label": "All fields reviewed",
+      "description": "No extracted field is awaiting human review"
+    },
     "documents.authenticityEstablished": {
       "label": "Authenticity confirmed by issuing authority",
       "description": "Every attached document was confirmed by an authorised source or by an officer contacting one. Simulated checks never count."

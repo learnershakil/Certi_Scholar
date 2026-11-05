@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ScholarshipModel, ScholarshipRuleModel } from '../models/scholarship.js';
-import { DocumentTypeModel } from '../models/document.js';
+import { ApplicationModel, ScholarshipModel, ScholarshipRuleModel } from '../models/scholarship.js';
+import { DocumentModel, DocumentTypeModel } from '../models/document.js';
+import { documentFacts } from '../services/recommendation.js';
 import { actor, parse, requireRole } from '../lib/http.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
-import { describeFacts, type FactText } from '../domain/facts.js';
+import { UserModel } from '../models/user.js';
+import { deriveFacts, describeFacts, type FactText } from '../domain/facts.js';
 import { getSettings } from '../models/system.js';
-import { evaluate, OPERATORS, ruleNodeSchema, validateRule } from '../domain/rules.js';
+import { evaluate, OPERATORS, ruleNodeSchema, validateRule, type RuleNode } from '../domain/rules.js';
 
 export const scholarships = Router();
 
@@ -26,6 +28,41 @@ const scholarshipBody = z.object({
 scholarships.get('/', async (req, res) => {
   const filter = actor(req).role === 'student' ? { active: true } : {};
   res.json(await ScholarshipModel.find(filter).sort({ name: 1 }).populate('officers', 'name email').lean());
+});
+
+/**
+ * Each open scholarship with its eligibility criteria in plain language (from the active rule version).
+ * For a student, criteria are checked against their own data: for a scholarship they applied to, the documents
+ * attached to that application; otherwise their newest document of each type. Values still awaiting review are
+ * withheld by deriveFacts, so those criteria stay undetermined rather than guessed.
+ */
+scholarships.get('/overview', async (req, res) => {
+  const me = actor(req);
+  const student = me.role === 'student';
+  const [list, rules, settings, user, docs, apps] = await Promise.all([
+    // Currently available: active, and either no deadline or a deadline that has not passed.
+    ScholarshipModel.find({ active: true, $or: [{ deadline: null }, { deadline: { $gte: new Date() } }] }).sort({ deadline: 1, name: 1 }).lean(),
+    ScholarshipRuleModel.find({ active: true }).lean(),
+    getSettings(),
+    UserModel.findById(me.id).lean(),
+    student ? DocumentModel.find({ owner: me.id, status: { $nin: ['rejected', 'purged'] } }).sort({ createdAt: -1 }).lean() : [],
+    student ? ApplicationModel.find({ student: me.id }).lean() : [],
+  ]);
+  const text = settings.factText as FactText;
+  const allFacts = student ? await documentFacts(docs) : []; // newest first, so each type's newest document is used
+  const factsFor = (scholarshipId: unknown) => {
+    if (!student) return {};
+    const app = apps.find((a) => String(a.scholarship) === String(scholarshipId));
+    const ids = app && new Set(app.documents.map(String));
+    return deriveFacts(user?.profile ?? {}, ids ? allFacts.filter((d) => ids.has(d.documentId)) : allFacts).facts;
+  };
+  res.json(
+    list.map((s) => {
+      const rule = rules.find((r) => String(r.scholarship) === String(s._id));
+      const { _id, code, name, description, sponsor, amount, deadline, requiredDocuments } = s;
+      return { _id, code, name, description, sponsor, amount, deadline, requiredDocuments, ruleVersion: rule?.version ?? null, criteria: rule ? evaluate(rule.root as RuleNode, factsFor(s._id), text) : null };
+    }),
+  );
 });
 
 /** Required documents must be active document types, which administrators manage as data. */

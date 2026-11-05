@@ -6,7 +6,7 @@ import { ScholarshipModel, ScholarshipRuleModel } from './models/scholarship.js'
 import { SettingsModel } from './models/system.js';
 import { UserModel, type Role } from './models/user.js';
 import { hashPassword } from './lib/crypto.js';
-import type { RuleNode } from './domain/rules.js';
+import { withoutRetiredFacts, type RuleNode } from './domain/rules.js';
 
 /**
  * Seed data lives in JSON files under SEED_DIR (default apps/api/seed), not in code:
@@ -62,6 +62,24 @@ export async function seedScholarships() {
       await ScholarshipRuleModel.create({ scholarship: sch._id, version: 1, root: rule, changeNote: 'Initial rule set' });
     }
   }
+}
+
+/**
+ * Facts removed from the catalog (such as the applicant category) must not linger: live rules that use one get a new
+ * version without it (earlier versions stay, so past recommendations remain reproducible), and stored profiles drop
+ * the value. Runs on every start and does nothing once the data is clean.
+ */
+export async function retireRemovedFacts() {
+  for (const rule of await ScholarshipRuleModel.find({ active: true }).lean()) {
+    const root = rule.root as unknown as RuleNode;
+    const pruned = withoutRetiredFacts(root);
+    if (pruned && JSON.stringify(pruned) !== JSON.stringify(root)) {
+      await ScholarshipRuleModel.updateMany({ scholarship: rule.scholarship }, { active: false });
+      await ScholarshipRuleModel.create({ scholarship: rule.scholarship, version: rule.version + 1, root: pruned, changeNote: 'Removed conditions on facts that are no longer collected (applicant category)' });
+    }
+  }
+  // The schema no longer has the field, so go to the collection directly.
+  await UserModel.collection.updateMany({ 'profile.category': { $exists: true } }, { $unset: { 'profile.category': '' } });
 }
 
 /** Full development seed: reference data, demo accounts (password from SEED_DEMO_PASSWORD) and scholarships. */

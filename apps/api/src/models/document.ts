@@ -108,6 +108,8 @@ const DocumentSchema = new Schema(
     ocrProvider: String,
     assignedTo: { type: ObjectId, ref: 'User', index: true },
     reviewCompletedAt: Date,
+    // A verifier's decision that this is not a usable document (wrong document, unreadable, not the applicant's).
+    rejection: { reason: String, at: Date, by: { type: ObjectId, ref: 'User' } },
     reviewedBy: { type: ObjectId, ref: 'User' },
     verification: {
       status: { type: String, enum: VERIFICATION_STATUSES, default: 'not_verified' },

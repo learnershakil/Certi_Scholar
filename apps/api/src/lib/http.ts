@@ -59,7 +59,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
   const e = err as { name?: string; code?: string | number; message?: string };
   if (e.name === 'MulterError') {
-    res.status(e.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: { code: 'upload_rejected', message: e.message } });
+    const tooLarge = e.code === 'LIMIT_FILE_SIZE';
+    const message = tooLarge
+      ? `This file is larger than the ${(config().MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB limit. Compress it or scan it at a lower resolution, then upload again.`
+      : e.code === 'LIMIT_FILE_COUNT' || e.code === 'LIMIT_UNEXPECTED_FILE' ? 'Upload one file at a time.' : e.message;
+    res.status(tooLarge ? 413 : 400).json({ error: { code: tooLarge ? 'file_too_large' : 'upload_rejected', message } });
+    return;
+  }
+  // The connection closed before the whole file arrived (network drop, page closed, or a proxy limit).
+  if (e.message === 'Request aborted' || e.code === 'ECONNRESET') {
+    if (!res.headersSent) res.status(400).json({ error: { code: 'upload_interrupted', message: 'The upload was interrupted before the whole file arrived. Check your connection and try again.' } });
     return;
   }
   if (e.name === 'CastError') {

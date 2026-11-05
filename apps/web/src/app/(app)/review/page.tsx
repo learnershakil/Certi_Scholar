@@ -43,7 +43,7 @@ export default function ReviewQueuePage() {
   return (
     <>
       <PageHead title="Review queue" subtitle="Fields below the confidence threshold, failed processing and pending verification. Claim a case to open its content." />
-      <div className="grid grid-3" style={{ marginBottom: 16 }}>
+      <div className="stat-strip" style={{ marginBottom: 16 }}>
         <Stat label="Assigned to me" value={mine.length} />
         <Stat label="Unassigned" value={unassigned.length} />
         <Stat label="Fields awaiting review" value={data?.reduce((s, d) => s + d.pendingFields, 0) ?? '—'} />

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import multer from 'multer';
+import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { config } from '../config.js';
 import {
@@ -30,14 +31,36 @@ import { recordManualVerification, requestVerification } from '../services/verif
 export const documents = Router();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config().MAX_UPLOAD_BYTES, files: 1 } });
+const MULTIPART_OVERHEAD = 64 * 1024;
+export const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+export const tooLargeMessage = (size?: number) =>
+  `${size ? `This file is ${megabytes(size)}. ` : 'This file is too large. '}The limit is ${megabytes(config().MAX_UPLOAD_BYTES)}. Compress it or scan it at a lower resolution, then upload again.`;
+
+/**
+ * Refuses an oversized upload from its declared length without buffering it. The body is read and discarded first:
+ * answering mid-upload resets the connection, and the browser (or the web proxy) would then show no reason at all.
+ */
+const rejectOversize = (req: Request, _res: Response, next: NextFunction) => {
+  const declared = Number(req.headers['content-length']);
+  if (!(declared > config().MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD)) return next();
+  const refusal = new HttpError(413, 'file_too_large', tooLargeMessage(declared));
+  req.on('end', () => next(refusal));
+  req.on('error', () => next(refusal));
+  req.resume();
+};
+
+/** What the upload form should check before sending, from the same configuration the server enforces. */
+documents.get('/upload-policy', (_req, res) => {
+  res.json({ maxBytes: config().MAX_UPLOAD_BYTES, accept: ['application/pdf', 'image/png', 'image/jpeg'] });
+});
 
 /** M1 — secure intake. Type is sniffed from content, the file is scanned before it is stored, and stored encrypted. */
-documents.post('/', requireRole('student'), upload.single('file'), async (req, res) => {
+documents.post('/', requireRole('student'), rejectOversize, upload.single('file'), async (req, res) => {
   const me = actor(req);
   const file = req.file;
-  if (!file) throw badRequest('A file is required');
+  if (!file) throw badRequest('Choose a file to upload');
   const mime = sniffMime(file.buffer);
-  if (!mime) throw new HttpError(415, 'unsupported_type', 'Only PDF, PNG and JPEG documents are accepted');
+  if (!mime) throw new HttpError(415, 'unsupported_type', `"${file.originalname}" is not a PDF, PNG or JPEG file. Save or scan the document in one of those formats and upload again.`);
   if (mime === 'application/pdf' && hasActivePdfContent(file.buffer)) {
     throw new HttpError(422, 'active_content', 'PDFs containing scripts or embedded files are not accepted');
   }
@@ -81,6 +104,7 @@ const summary = (d: InstanceType<typeof DocumentModel>) => ({
   profileFormat: d.profileFormat,
   stages: d.stages,
   verification: d.verification,
+  rejection: d.rejection?.reason ? { reason: d.rejection.reason, at: d.rejection.at } : undefined,
   authenticity: authenticityStatement((d.verification?.status ?? 'not_verified') as VerificationStatus),
   assignedTo: d.assignedTo,
   owner: d.owner,
@@ -209,6 +233,28 @@ documents.post('/:id/review/complete', requireRole('verifier', 'admin'), async (
   await audit(me, 'review.completed', 'Document', doc._id, undefined, req.ip);
   await timeline({ document: doc._id, stage: 'review', status: 'done', actor: me.id });
   await notify(doc.owner, 'processing_complete', `"${doc.originalName}" has been reviewed.`, `/documents/${doc.id}`);
+  await reevaluateApplicationsFor(doc._id);
+  res.json(summary(doc));
+});
+
+const rejectBody = z.object({ reason: z.string().trim().min(5, 'Give the student a reason of at least 5 characters').max(500) });
+
+/**
+ * A verifier rejects a document that cannot be used (the wrong document, unreadable, not the applicant's). It leaves
+ * the review queue, never counts towards an application, and the student is told why so they can upload the right one.
+ */
+documents.post('/:id/reject', requireRole('verifier', 'admin'), async (req, res) => {
+  const me = actor(req);
+  const doc = await loadDocument(me, String(req.params.id), { write: true });
+  const { reason } = parse(rejectBody, req.body);
+  if (doc.status === 'rejected') throw conflict('This document has already been rejected');
+  if (doc.status === 'purged') throw conflict('This document has been deleted under the retention policy');
+  doc.status = 'rejected';
+  doc.rejection = { reason, at: new Date(), by: me.id as never };
+  await doc.save();
+  await audit(me, 'document.rejected', 'Document', doc._id, { reason }, req.ip);
+  await timeline({ document: doc._id, stage: 'review', status: 'rejected', message: reason, actor: me.id });
+  await notify(doc.owner, 'document_rejected', `"${doc.originalName}" was rejected: ${reason} Please upload the correct document.`, '/documents');
   await reevaluateApplicationsFor(doc._id);
   res.json(summary(doc));
 });

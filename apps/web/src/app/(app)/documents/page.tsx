@@ -12,6 +12,16 @@ import { Card, Empty, ErrorText, Loading, PageHead, StatusPill } from '@/compone
 
 const ACTIVE = ['queued', 'processing'];
 
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** A reason for each failure the server can give without a message of its own (for example from a proxy). */
+const uploadFailure = (status: number) =>
+  status === 413 ? 'This file is larger than the upload limit. Compress it or scan it at a lower resolution, then upload again.'
+  : status === 401 ? 'Your session has ended. Sign in again, then upload.'
+  : status === 403 ? 'Only students can upload documents.'
+  : status >= 500 ? 'The server could not process the upload. Try again in a moment; if it keeps failing, contact the scholarship office.'
+  : `The upload was not accepted (error ${status}).`;
+
 function Upload({ onDone }: { onDone: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -20,10 +30,23 @@ function Upload({ onDone }: { onDone: () => void }) {
   const [declaredType, setDeclaredType] = useState('');
   const docTypes = useDocTypes();
 
+  const policy = useApi<{ maxBytes: number; accept: string[] }>('/documents/upload-policy');
+
   const send = async (file?: File) => {
     if (!file) return;
-    setBusy(true);
     setError(undefined);
+    // The same limits the server enforces, checked first so a large file is not sent for nothing.
+    if (policy.data && file.size > policy.data.maxBytes) {
+      setError(`"${file.name}" is ${megabytes(file.size)}. The limit is ${megabytes(policy.data.maxBytes)}. Compress it or scan it at a lower resolution, then upload again.`);
+      if (input.current) input.current.value = '';
+      return;
+    }
+    if (policy.data && file.type && !policy.data.accept.includes(file.type)) {
+      setError(`"${file.name}" is not a PDF, PNG or JPEG file. Save or scan the document in one of those formats and upload again.`);
+      if (input.current) input.current.value = '';
+      return;
+    }
+    setBusy(true);
     const form = new FormData();
     form.append('file', file);
     if (declaredType) form.append('declaredType', declaredType);
@@ -31,11 +54,12 @@ function Upload({ onDone }: { onDone: () => void }) {
       const res = await fetch('/api/v1/documents', { method: 'POST', body: form, credentials: 'same-origin' });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new ApiError(res.status, body?.error?.code, body?.error?.message ?? 'Upload failed');
+        throw new ApiError(res.status, body?.error?.code, body?.error?.message ?? uploadFailure(res.status));
       }
       onDone();
     } catch (e) {
-      setError((e as Error).message);
+      // fetch itself throws only when the request never completed (connection lost, server unreachable).
+      setError(e instanceof ApiError ? e.message : 'The upload could not reach the server. Check your connection and try again.');
     } finally {
       setBusy(false);
       if (input.current) input.current.value = '';
@@ -49,10 +73,12 @@ function Upload({ onDone }: { onDone: () => void }) {
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); void send(e.dataTransfer.files[0]); }}
     >
-      <p style={{ margin: '0 0 8px' }}>Drop a marksheet, income certificate or identity document here</p>
-      <p className="small muted" style={{ margin: '0 0 12px' }}>PDF, PNG or JPEG · up to 10 MB · scanned for malware and stored encrypted</p>
+      <div>
+        <strong>Upload a marksheet, income certificate or identity document</strong>
+        <span className="small muted">Drag a file here or choose one. PDF, PNG or JPEG, up to {policy.data ? `${Math.round(policy.data.maxBytes / 1024 / 1024)} MB` : '10 MB'}. Files are scanned and stored encrypted.</span>
+      </div>
       <input ref={input} type="file" accept="application/pdf,image/png,image/jpeg" hidden onChange={(e) => send(e.target.files?.[0])} aria-label="Choose document" />
-      <div className="row" style={{ justifyContent: 'center' }}>
+      <div className="row">
         <select className="select" style={{ width: 240 }} value={declaredType} onChange={(e) => setDeclaredType(e.target.value)} aria-label="Document type">
           <option value="">Detect type automatically</option>
           {docTypes.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
@@ -61,7 +87,7 @@ function Upload({ onDone }: { onDone: () => void }) {
           {busy ? 'Uploading…' : 'Choose file'}
         </button>
       </div>
-      {error && <div style={{ marginTop: 12 }}><ErrorText error={error} /></div>}
+      {error && <div style={{ flexBasis: '100%' }}><ErrorText error={error} /></div>}
     </div>
   );
 }
@@ -104,7 +130,7 @@ export default function DocumentsPage() {
                   <tr key={d.id} className="clickable" onClick={() => router.push(`/documents/${d.id}`)}>
                     <td><Link href={`/documents/${d.id}`}>{d.originalName}</Link></td>
                     <td>{docType(d.documentType)}</td>
-                    <td><StatusPill status={d.status} /></td>
+                    <td><StatusPill status={d.status} />{d.rejection && <div className="small" style={{ color: 'var(--danger)', marginTop: 4, maxWidth: 260 }}>{d.rejection.reason}</div>}</td>
                     <td>
                       <StatusPill status={d.verification.status} />
                       {d.verification.simulated && <span className="simulated-tag" style={{ marginLeft: 6 }}>SIMULATED</span>}

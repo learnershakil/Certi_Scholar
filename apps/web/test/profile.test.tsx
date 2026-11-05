@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 
 const me = { id: 'u1', name: 'Ananya Sharma', email: 'student@example.test', role: 'student' as string };
 const reloadMe = vi.fn().mockResolvedValue(undefined);
-vi.mock('@/components/AppShell', () => ({ useMe: () => me, useReloadMe: () => reloadMe }));
+const replace = vi.fn();
+vi.mock('@/components/AppShell', () => ({ useMe: () => me, useReloadMe: () => reloadMe, HOME: { student: '/dashboard', verifier: '/review' } }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
 
 import ProfilePage from '@/app/(app)/profile/page';
 import { BrandingProvider } from '@/lib/branding';
@@ -17,7 +19,7 @@ function route(profile: object) {
     if (url.endsWith('/auth/me/profile') && init?.method === 'PATCH') return json({ ...profile, ...JSON.parse(String(init.body)) });
     if (url.endsWith('/auth/me/profile')) return json(profile);
     if (url.endsWith('/scholarships/facts')) {
-      return json({ facts: { 'applicant.category': { type: 'enum', label: 'Category', options: ['GEN', 'SC', 'ST'] }, 'applicant.gender': { type: 'enum', label: 'Gender', options: ['female', 'male'] }, 'applicant.state': { type: 'string', label: 'State of domicile' } } });
+      return json({ facts: { 'applicant.gender': { type: 'enum', label: 'Gender', options: ['female', 'male'] }, 'applicant.state': { type: 'string', label: 'State of domicile' } } });
     }
     if (url.endsWith('/auth/me/password')) return new Response(null, { status: 204 });
     throw new Error(`unexpected ${url}`);
@@ -34,6 +36,7 @@ const renderPage = () =>
 beforeEach(() => {
   fetchMock.mockReset();
   reloadMe.mockClear();
+  replace.mockReset();
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => {
@@ -42,29 +45,48 @@ afterEach(() => {
 });
 
 describe('profile page', () => {
-  it('lets a student edit applicant details using the rule engine’s choices', async () => {
+  it('welcomes a new student, takes gender and state once, then opens their start page', async () => {
     me.role = 'student';
-    route({ ...me, profile: { category: 'GEN', gender: 'female', state: 'Karnataka' } });
+    route({ ...me, profile: {}, profileComplete: false });
     renderPage();
-    const category = await screen.findByLabelText('Category');
-    await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('ST'));
+    expect(await screen.findByText(/Before you start, add your gender and state/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Category')).toBeNull(); // no longer collected
+    const gender = await screen.findByLabelText('Gender');
+    await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('female'));
+    expect(screen.getByText(/once saved they cannot be changed/)).toBeInTheDocument();
+
+    await userEvent.selectOptions(gender, 'female');
+    await userEvent.type(screen.getByLabelText('State of domicile'), 'Kerala');
+    await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'));
+    const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+    expect(JSON.parse(patchCall![1].body)).toEqual({ name: 'Ananya Sharma', profile: { phone: '', gender: 'female', state: 'Kerala' } });
+    expect(reloadMe).toHaveBeenCalled();
+  });
+
+  it('shows gender and state read-only once set, and never sends them again', async () => {
+    me.role = 'student';
+    route({ ...me, profile: { gender: 'female', state: 'Karnataka' }, profileComplete: true });
+    renderPage();
+    expect(await screen.findByLabelText<HTMLInputElement>('Gender')).toBeDisabled();
+    expect(await screen.findByLabelText<HTMLInputElement>('State of domicile')).toBeDisabled(); // label comes from the rule catalog
+    expect(screen.getByText(/fixed once set/)).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeDisabled();
     expect(screen.getByLabelText<HTMLInputElement>('Role').value).toBe('Student');
 
-    await userEvent.selectOptions(category, 'SC');
     await userEvent.clear(screen.getByLabelText('Full name'));
     await userEvent.type(screen.getByLabelText('Full name'), 'Ananya S.');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
+    expect(await screen.findByText('Saved.')).toBeInTheDocument();
     const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
-    expect(JSON.parse(patchCall![1].body)).toEqual({ name: 'Ananya S.', profile: { phone: '', category: 'SC', gender: 'female', state: 'Karnataka' } });
-    expect(await screen.findByText(/open applications are being re-checked/)).toBeInTheDocument();
-    expect(reloadMe).toHaveBeenCalled();
+    expect(JSON.parse(patchCall![1].body)).toEqual({ name: 'Ananya S.', profile: { phone: '' } });
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it('shows staff no applicant details', async () => {
     me.role = 'verifier';
-    route({ ...me, role: 'verifier', profile: {} });
+    route({ ...me, role: 'verifier', profile: {}, profileComplete: true });
     renderPage();
     expect(await screen.findByLabelText('Full name')).toBeInTheDocument();
     expect(screen.queryByText('Applicant details')).toBeNull();
@@ -73,7 +95,7 @@ describe('profile page', () => {
 
   it('enables password change only when the new passwords match', async () => {
     me.role = 'verifier';
-    route({ ...me, role: 'verifier', profile: {} });
+    route({ ...me, role: 'verifier', profile: {}, profileComplete: true });
     renderPage();
     await userEvent.type(await screen.findByLabelText('Current password'), 'old-password-1');
     await userEvent.type(screen.getByLabelText('New password'), 'new-password-123');

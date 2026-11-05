@@ -22,7 +22,7 @@ const rule = {
     { type: 'condition', fact: 'marksheet.percentage', operator: 'gte', value: 70 },
     { type: 'group', op: 'OR', children: [
       { type: 'condition', fact: 'income.annualIncome', operator: 'lte', value: 300000 },
-      { type: 'condition', fact: 'applicant.category', operator: 'in', value: ['SC', 'ST'] },
+      { type: 'condition', fact: 'applicant.gender', operator: 'in', value: ['female', 'other'] },
     ] },
   ],
 };
@@ -38,7 +38,7 @@ describe('no-code rule management', () => {
     const before = await ScholarshipRuleModel.countDocuments();
     const res = await admin
       .post('/api/v1/scholarships/rules/test')
-      .send({ root: rule, facts: { 'marksheet.percentage': 72, 'income.annualIncome': 900000, 'applicant.category': 'ST' } })
+      .send({ root: rule, facts: { 'marksheet.percentage': 72, 'income.annualIncome': 900000, 'applicant.gender': 'female' } })
       .expect(200);
     expect(res.body.outcome).toBe('pass');
     expect(res.body.children[1].children.map((c: { outcome: string }) => c.outcome)).toEqual(['fail', 'pass']);

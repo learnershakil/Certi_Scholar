@@ -1,7 +1,7 @@
 'use client';
 
 import { useApi } from '@/lib/useApi';
-import { docType, humanize, pct } from '@/lib/format';
+import { docType, humanize, pct, stageName } from '@/lib/format';
 import { Card, ErrorText, Loading, PageHead, Stat } from '@/components/ui';
 
 interface Summary {
@@ -44,7 +44,7 @@ export default function ReportsPage() {
     <>
       <PageHead title="Reports" actions={<a className="btn" href="/api/v1/reports/awards.csv">Export award list (CSV)</a>} />
       <div className="stack">
-        <div className="grid grid-4">
+        <div className="stat-strip">
           <Stat label="Documents processed (last hour)" value={data.processedLastHour} hint="Target: 500 / hour" />
           <Stat label="Processing failure rate" value={pct(totalDocs ? failed / totalDocs : 0)} hint={`${failed} of ${totalDocs} documents`} />
           <Stat label="Consistency failure rate" value={pct(data.consistencyFailureRate)} />
@@ -65,7 +65,7 @@ export default function ReportsPage() {
           <Card flush title="Processing time by stage">
             <table className="table">
               <thead><tr><th>Stage</th><th className="right">Runs</th><th className="right">Average</th><th className="right">Max</th><th className="right">Failures</th></tr></thead>
-              <tbody>{data.stageTimings.map((s) => <tr key={s.stage}><td style={{ textTransform: 'capitalize' }}>{s.stage}</td><td className="right">{s.runs}</td><td className="right">{s.avgMs} ms</td><td className="right">{s.maxMs} ms</td><td className="right">{pct(s.failureRate)}</td></tr>)}</tbody>
+              <tbody>{data.stageTimings.map((s) => <tr key={s.stage}><td>{stageName(s.stage)}</td><td className="right">{s.runs}</td><td className="right">{s.avgMs} ms</td><td className="right">{s.maxMs} ms</td><td className="right">{pct(s.failureRate)}</td></tr>)}</tbody>
             </table>
           </Card>
         </div>
@@ -76,7 +76,7 @@ export default function ReportsPage() {
               {data.extraction.map((e) => (
                 <tr key={`${e.documentType}-${e.field}`}>
                   <td>{docType(e.documentType)}</td>
-                  <td className="mono">{e.field}</td>
+                  <td>{humanize(e.field)}</td>
                   <td className="right">{e.extracted}</td>
                   <td className="right">{e.lowConfidence}</td>
                   <td className="right">{e.corrected}</td>
@@ -89,7 +89,7 @@ export default function ReportsPage() {
         <Card flush title="Officer throughput (30 days)">
           <table className="table">
             <thead><tr><th>Officer</th><th>Action</th><th className="right">Count</th></tr></thead>
-            <tbody>{data.officerThroughput.map((o, i) => <tr key={i}><td>{o.name}</td><td className="mono">{o.action}</td><td className="right">{o.n}</td></tr>)}</tbody>
+            <tbody>{data.officerThroughput.map((o, i) => <tr key={i}><td>{o.name}</td><td>{humanize(o.action.replaceAll('.', ' '))}</td><td className="right">{o.n}</td></tr>)}</tbody>
           </table>
         </Card>
       </div>

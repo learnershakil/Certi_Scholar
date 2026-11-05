@@ -10,6 +10,10 @@ export interface Me {
   name: string;
   email: string;
   role: Role;
+  /** False for a student whose gender or state is not set yet; they are sent to their profile first. */
+  profileComplete?: boolean;
+  /** Only on the sign-in response: this account has never signed in before. */
+  firstLogin?: boolean;
 }
 
 export interface Stage {
@@ -35,6 +39,8 @@ export interface DocumentSummary {
   profileFormat?: string;
   stages: Stage[];
   verification: { status: string; providerLabel?: string; simulated?: boolean; checkedAt?: string };
+  /** Set when a verifier rejected the document; the student sees the reason. */
+  rejection?: { reason: string; at: string };
   authenticity: Authenticity;
   assignedTo?: string | null;
   createdAt: string;
@@ -99,7 +105,24 @@ export interface NodeResult {
   outcome: 'pass' | 'fail' | 'unknown';
   reason: string;
   op?: 'AND' | 'OR';
+  fact?: string;
+  /** The value the condition was checked against, when one was available. */
+  actual?: unknown;
   children?: NodeResult[];
+}
+
+/** An open scholarship as the student dashboard shows it; criteria are checked against the profile only. */
+export interface ScholarshipOverview {
+  _id: string;
+  code: string;
+  name: string;
+  description?: string;
+  sponsor?: string;
+  amount?: number;
+  deadline?: string;
+  requiredDocuments: string[];
+  ruleVersion: number | null;
+  criteria: NodeResult | null;
 }
 
 export interface FactDefinition {

@@ -52,7 +52,7 @@
     "name": "Women in STEM Scholarship 2026",
     "sponsor": "Alumni Endowment Fund",
     "amount": 75000,
-    "description": "For women students with at least 75% aggregate entering science and engineering programmes.",
+    "description": "For women students with at least 75% aggregate and family income up to ₹8 lakh per year, entering science and engineering programmes.",
     "requiredDocuments": [
       "marksheet",
       "income_certificate",
@@ -84,26 +84,10 @@
           "operator": "is_true"
         },
         {
-          "type": "group",
-          "op": "OR",
-          "label": "Means test or category",
-          "children": [
-            {
-              "type": "condition",
-              "fact": "income.annualIncome",
-              "operator": "lte",
-              "value": 800000
-            },
-            {
-              "type": "condition",
-              "fact": "applicant.category",
-              "operator": "in",
-              "value": [
-                "SC",
-                "ST"
-              ]
-            }
-          ]
+          "type": "condition",
+          "fact": "income.annualIncome",
+          "operator": "lte",
+          "value": 800000
         }
       ]
     }

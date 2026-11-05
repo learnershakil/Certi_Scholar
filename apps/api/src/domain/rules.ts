@@ -152,6 +152,16 @@ export function evaluate(node: RuleNode, facts: FactSet, text: FactText = {}): N
   return { type: 'group', op: node.op, label: node.label || (node.op === 'AND' ? 'All of' : 'Any of'), outcome, reason, children };
 }
 
+/**
+ * Removes conditions on facts that are no longer in the catalog (and groups left empty). Returns null when nothing
+ * is left. Used to publish a new rule version when a fact is retired, so live rules never ask for it.
+ */
+export function withoutRetiredFacts(node: RuleNode): RuleNode | null {
+  if (node.type === 'condition') return FACT_CATALOG[node.fact] ? node : null;
+  const children = node.children.map(withoutRetiredFacts).filter((c): c is RuleNode => c !== null);
+  return children.length ? { ...node, children } : null;
+}
+
 /** Flattens a result tree into a numbered list for reports ("1.2  Income is at most 250000 — fail"). */
 export function flattenResult(r: NodeResult, prefix = ''): Array<{ ref: string; depth: number; result: NodeResult }> {
   const rows = [{ ref: prefix || 'root', depth: prefix ? prefix.split('.').length : 0, result: r }];

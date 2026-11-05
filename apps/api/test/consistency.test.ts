@@ -102,8 +102,9 @@ describe('fact derivation', () => {
   });
 
   it('labels self-declared profile facts', () => {
-    const { facts, provenance } = deriveFacts({ category: 'SC', gender: 'female' }, []);
-    expect(facts['applicant.category']).toBe('SC');
+    const { facts, provenance } = deriveFacts({ gender: 'female', state: 'Kerala' }, []);
+    expect(facts['applicant.state']).toBe('Kerala');
+    expect(facts['applicant.category']).toBeUndefined(); // no longer collected
     expect(provenance['applicant.gender'].source).toMatch(/self-declared/);
     expect(facts['documents.reviewComplete']).toBeUndefined();
   });

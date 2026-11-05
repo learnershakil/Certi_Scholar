@@ -34,7 +34,7 @@ The first command creates `.env` with random secrets and a random demo password,
 
 ### Walkthrough
 
-1. **Student**: upload `marksheet.png`, `income_certificate.pdf` and `identity.pdf` (optionally choosing the type; "Detect automatically" is the default). ICSE Class X marksheets are read with their own format profile. Watch the stages run, then open a document to see the extracted fields over the image.
+1. **Student**: the Dashboard shows a card for every scholarship currently available (active and before its deadline) with its award, required documents and profile fit; choosing one shows its eligibility criteria (profile criteria are checked at once; document criteria after review). Upload `marksheet.png`, `income_certificate.pdf` and `identity.pdf` (optionally choosing the type; "Detect automatically" is the default). ICSE Class X marksheets are read with their own format profile. Watch the stages run, then open a document to see the extracted fields over the image.
 2. **Verifier**: in the Review queue, claim a case. Low-confidence fields are flagged in red; click one to highlight its region on the image. Confirm or correct it (a reason is required), complete the review, request verification (labelled **SIMULATED** in dev), and record a manual confirmation from the issuing authority.
 3. **Student**: apply for *Merit-cum-Means Scholarship 2026* with the three documents.
 4. **Officer**: open the application. You see every condition with its result, the source of each fact, and what has been established about each document. Award it, then export the award list from Reports.
@@ -47,6 +47,7 @@ Nothing environment-specific is written in the code. Each kind of value has one 
 | Kind of value | Where | How to change it |
 |---|---|---|
 | Secrets: `JWT_SECRET`, `PRESIGN_SECRET`, `STORAGE_KEY`, `REGISTRY_API_KEY` | `.env` (never committed) | `node scripts/init-env.mjs` generates them; edit `.env` and restart. **Never change `STORAGE_KEY` on a system with documents**: they would no longer open |
+| Document file storage: local volume or Cloudflare R2 (`STORAGE_DRIVER`, `R2_*`) | `.env` | See *Moving document storage to Cloudflare R2* below. Files are encrypted by the app before upload either way |
 | Runtime settings: session length, job retries and backoff, worker concurrency, retention schedule, list size, upload limit, OCR timeout | `.env`, documented in `.env.example` | Edit `.env`, then `docker compose up -d`. The API validates every value at startup and names any bad one |
 | Demo accounts and their password | `apps/api/seed/demo-users.json` + `SEED_DEMO`, `SEED_DEMO_PASSWORD` in `.env` | Refused when `NODE_ENV=production` |
 | Login-page demo shortcuts | `NEXT_PUBLIC_DEMO_ACCOUNTS` in `.env` (`email:role,…`) | Rebuild the web image. They fill the email and role only; no password is ever in the web app |
@@ -59,6 +60,28 @@ Nothing environment-specific is written in the code. Each kind of value has one 
 | Document types shown in dropdowns and labels | Database (`DocumentType`), served at `GET /api/v1/document-types` | Add to `seed/document-types.json` for new installs; the web app reads the list from the API |
 
 What stays in code on purpose: the role keys, status keys and rule operators (their display names are configurable). These are the system's vocabulary, which the code reasons about; changing them is a code change by design.
+
+## Moving document storage to Cloudflare R2
+
+Uploaded files are encrypted by the app (AES-256-GCM) and then stored either on the private `documents` Docker volume (`STORAGE_DRIVER=file`, the default) or in a private Cloudflare R2 bucket (`STORAGE_DRIVER=r2`). MongoDB only stores each document's record and the random key of its file. R2 receives ciphertext only, and files are always served through the API (2-minute signed link, view logged), never from a public bucket URL.
+
+1. In Cloudflare, create a bucket and an R2 API token with read and write access to that bucket only. Keep the bucket's public access turned off.
+2. Put the values in `.env`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` (and optionally `R2_ENDPOINT`), leaving `STORAGE_DRIVER=file`.
+3. Copy existing files across. They are copied as stored (still encrypted), each is read back and compared, and the step can be run again safely:
+
+```bash
+docker compose run --rm --no-deps api node dist/migrateStorage.js
+```
+
+4. Set `STORAGE_DRIVER=r2` in `.env`, then restart:
+
+```bash
+docker compose up -d api worker worker-ocr
+```
+
+5. Check **Admin → Settings & profiles** or `GET /api/v1/admin/health`: `storage` should report `{"ok":true,"driver":"r2"}`.
+
+The old copies stay on the `documents` volume, so setting `STORAGE_DRIVER=file` again rolls back (files uploaded while on R2 would then need copying back). Keep `STORAGE_KEY` unchanged: it is what decrypts the files, wherever they are stored.
 
 ## Tests
 
@@ -84,7 +107,7 @@ cd apps/web && npm run dev
 
 ## API (v1)
 
-`/api/v1/auth/{login,logout,me}` · `/documents` (POST upload, GET list) · `/documents/review-queue` · `/documents/:id` · `/documents/:id/status` · `/documents/:id/fields` (PATCH `/:key` corrects, POST `/:key/confirm` confirms) · `/documents/:id/{claim,type,reprocess,review/complete,access-url,verify,verify/manual,timeline,corrections,access-log}` · `/files/:token` · `/scholarships` · `/scholarships/facts` · `/scholarships/rules` · `/scholarships/rules/test` · `/scholarships/:id/rules` · `/applications` · `/applications/:id/{recommendation,decision,timeline}` · `/reports/summary` · `/reports/awards.csv` · `/admin/{settings,users,profiles,document-types,audit,access-log,health}`
+`/api/v1/auth/{login,logout,me,me/profile,me/password}` · `/documents` (POST upload, GET list) · `/documents/review-queue` · `/documents/:id` · `/documents/:id/status` · `/documents/:id/fields` (PATCH `/:key` corrects, POST `/:key/confirm` confirms) · `/documents/:id/{claim,type,reprocess,review/complete,access-url,verify,verify/manual,timeline,corrections,access-log}` · `/files/:token` · `/scholarships` · `/scholarships/overview` · `/scholarships/facts` · `/scholarships/rules` · `/scholarships/rules/test` · `/scholarships/:id/rules` · `/applications` · `/applications/:id/{recommendation,decision,timeline}` · `/reports/summary` · `/reports/awards.csv` · `/admin/{settings,users,profiles,document-types,audit,access-log,health}`
 
 Errors always use the shape `{ "error": { "code", "message", "details?" } }`.
 

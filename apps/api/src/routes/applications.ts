@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DocumentModel } from '../models/document.js';
+import { DocumentModel, DocumentTypeModel } from '../models/document.js';
+import { UserModel } from '../models/user.js';
+import { profileComplete } from './auth.js';
 import { ApplicationModel, RecommendationModel, ScholarshipModel } from '../models/scholarship.js';
 import { ProcessingTimelineModel } from '../models/system.js';
 import { actor, parse, requireRole } from '../lib/http.js';
@@ -20,8 +22,18 @@ applications.post('/', requireRole('student'), async (req, res) => {
   const body = parse(createBody, req.body);
   const scholarship = await ScholarshipModel.findOne({ _id: body.scholarshipId, active: true });
   if (!scholarship) throw notFound('Scholarship');
-  const owned = await DocumentModel.countDocuments({ _id: { $in: body.documentIds }, owner: me.id, status: { $nin: ['rejected', 'purged'] } });
-  if (owned !== body.documentIds.length) throw badRequest('Documents must be your own, active uploads');
+  const student = await UserModel.findById(me.id).lean();
+  if (!profileComplete(student!)) throw badRequest('Complete your profile (gender and state) before applying');
+  const owned = await DocumentModel.find({ _id: { $in: body.documentIds }, owner: me.id, status: { $nin: ['rejected', 'purged'] } }, 'documentType').lean();
+  if (owned.length !== new Set(body.documentIds).size) throw badRequest('Documents must be your own, active uploads');
+  // Every required document must be attached, identified by its classified type (not by what the file is called).
+  const attached = new Set(owned.map((d) => d.documentType));
+  const missing = (scholarship.requiredDocuments ?? []).filter((t) => !attached.has(t));
+  if (missing.length) {
+    const names = await DocumentTypeModel.find({ code: { $in: missing } }, 'code name').lean();
+    const label = (t: string) => names.find((n) => n.code === t)?.name ?? t;
+    throw badRequest(`Attach every required document: ${missing.map(label).join(', ')} missing. A document counts once it has been processed and identified.`, { missing });
+  }
   const app = await ApplicationModel.create({ student: me.id, scholarship: scholarship._id, documents: body.documentIds });
   await audit(me, 'application.submitted', 'Application', app._id, { scholarship: scholarship.code });
   await timeline({ application: app._id, stage: 'application', status: 'submitted', actor: me.id });

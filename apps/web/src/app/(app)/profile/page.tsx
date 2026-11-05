@@ -5,7 +5,8 @@ import { patch, post } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import { roleLabel, useBranding } from '@/lib/branding';
 import type { FactDefinition, Role } from '@/lib/types';
-import { useMe, useReloadMe } from '@/components/AppShell';
+import { HOME, useMe, useReloadMe } from '@/components/AppShell';
+import { useRouter } from 'next/navigation';
 import { Card, ErrorText, Loading, Notice, PageHead } from '@/components/ui';
 
 interface Profile {
@@ -13,12 +14,14 @@ interface Profile {
   name: string;
   email: string;
   role: Role;
-  profile: { phone?: string; category?: string; gender?: string; state?: string };
+  profile: { phone?: string; gender?: string; state?: string };
+  profileComplete: boolean;
 }
 
 function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
   const me = useMe();
   const reloadMe = useReloadMe();
+  const router = useRouter();
   const { roleLabels } = useBranding();
   const student = me.role === 'student';
   // The choices are the rule engine's own allowed values, so the form and the eligibility rules always agree.
@@ -27,6 +30,9 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
+  // Gender and state are fixed once saved; only the ones still missing can be entered.
+  const genderLocked = Boolean(data.profile.gender);
+  const stateLocked = Boolean(data.profile.state);
 
   useEffect(() => setForm({ name: data.name, ...data.profile }), [data]);
   const set = (k: string) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
@@ -39,13 +45,15 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
     setError(undefined);
     setMsg(undefined);
     try {
-      const profile = student
-        ? { phone: form.phone ?? '', category: form.category, gender: form.gender, state: form.state ?? '' }
-        : { phone: form.phone ?? '' };
-      await patch('/auth/me/profile', { name: form.name, profile: Object.fromEntries(Object.entries(profile).filter(([, v]) => v !== undefined)) });
+      const profile: Record<string, string> = { phone: form.phone ?? '' };
+      if (student && !genderLocked && form.gender) profile.gender = form.gender;
+      if (student && !stateLocked && form.state?.trim()) profile.state = form.state.trim();
+      await patch('/auth/me/profile', { name: form.name, profile });
       await reloadMe();
       onSaved();
-      setMsg(student ? 'Saved. Your open applications are being re-checked with the new details.' : 'Saved.');
+      // Finishing the profile for the first time takes the person on to their start page.
+      if (!data.profileComplete) return router.replace(HOME[me.role]);
+      setMsg('Saved.');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -77,31 +85,32 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
         </Card>
         {student && (
           <Card title="Applicant details">
-            <Notice tone="info">These are self-declared and used by scholarship rules. Changing them re-checks your open applications.</Notice>
+            {genderLocked && stateLocked ? (
+              <Notice tone="info">These are used by scholarship rules and are fixed once set. If one is wrong, contact the scholarship office.</Notice>
+            ) : (
+              <Notice tone="warning">Scholarship rules use these details. <strong>Check them carefully: once saved they cannot be changed.</strong></Notice>
+            )}
             <div className="form-row" style={{ marginTop: 12 }}>
-              <label className="label" htmlFor="category">{label('applicant.category', 'Category')}</label>
-              <select id="category" className="select" value={form.category ?? ''} onChange={set('category')}>
-                <option value="" disabled>Select…</option>
-                {options('applicant.category').map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div className="form-row">
               <label className="label" htmlFor="gender">{label('applicant.gender', 'Gender')}</label>
-              <select id="gender" className="select" value={form.gender ?? ''} onChange={set('gender')}>
-                <option value="" disabled>Select…</option>
-                {options('applicant.gender').map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
+              {genderLocked ? (
+                <input id="gender" className="input" value={data.profile.gender} readOnly disabled />
+              ) : (
+                <select id="gender" className="select" value={form.gender ?? ''} onChange={set('gender')} required>
+                  <option value="" disabled>Select…</option>
+                  {options('applicant.gender').map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              )}
             </div>
             <div className="form-row">
               <label className="label" htmlFor="state">{label('applicant.state', 'State')}</label>
-              <input id="state" className="input" value={form.state ?? ''} onChange={set('state')} />
+              <input id="state" className="input" value={form.state ?? ''} onChange={set('state')} readOnly={stateLocked} disabled={stateLocked} required={!stateLocked} />
             </div>
           </Card>
         )}
       </div>
       <ErrorText error={error} />
       <div className="row">
-        <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+        <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : data.profileComplete ? 'Save changes' : 'Save and continue'}</button>
         {msg && <span className="muted">{msg}</span>}
       </div>
     </form>
@@ -163,6 +172,11 @@ export default function ProfilePage() {
   return (
     <>
       <PageHead title="My profile" subtitle="Your details and sign-in password." />
+      {profile.data && !profile.data.profileComplete && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice tone="info"><strong>Welcome.</strong> Before you start, add your gender and state of domicile. Scholarship eligibility depends on them.</Notice>
+        </div>
+      )}
       <ErrorText error={profile.error} />
       {!profile.data ? (
         <Loading />

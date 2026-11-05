@@ -11,7 +11,9 @@ import { useMe } from '@/components/AppShell';
 import { EvaluationTree, Timeline } from '@/components/Progress';
 import { Card, ErrorText, Loading, Notice, PageHead, StatusPill } from '@/components/ui';
 
-const OUTCOME_TEXT = { recommended: 'Recommended', not_recommended: 'Not recommended', needs_review: 'Cannot be decided yet' };
+const showValue = (v: unknown) => (v === true ? 'Yes' : v === false ? 'No' : String(v));
+
+const OUTCOME_TEXT ={ recommended: 'Recommended', not_recommended: 'Not recommended', needs_review: 'Cannot be decided yet' };
 
 export default function ApplicationPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +21,7 @@ export default function ApplicationPage() {
   const app = useApi<Application>(`/applications/${id}`);
   const rec = useApi<Recommendation>(`/applications/${id}/recommendation`, { pollMs: 2500, pollWhile: () => false, retryOnError: true });
   const timeline = useApi<TimelineEntry[]>(`/applications/${id}/timeline`);
+  const factNames = useApi<{ facts: Record<string, { label: string }> }>('/scholarships/facts');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string>();
   const officer = me.role === 'scholarship_officer' || me.role === 'admin';
@@ -68,19 +71,15 @@ export default function ApplicationPage() {
               </Card>
               <div className="stack">
                 <Card flush title="Facts used">
-                  <table className="table">
-                    <tbody>
-                      {Object.entries(r.facts).map(([k, f]) => (
-                        <tr key={k}>
-                          <td className="small muted" style={{ width: '40%' }}>{k}</td>
-                          <td>
-                            <strong>{String(f.value)}</strong>
-                            <div className="small muted">{f.source}{f.note ? ` — ${f.note}` : ''}</div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {Object.entries(r.facts).map(([k, f]) => (
+                    <dl key={k} className="kv">
+                      <dt>{factNames.data?.facts[k]?.label ?? humanize(k.replace(".", " "))}</dt>
+                      <dd>
+                        {showValue(f.value)}
+                        <div className="small muted">{f.source}{f.note ? ` — ${f.note}` : ''}</div>
+                      </dd>
+                    </dl>
+                  ))}
                 </Card>
                 <Card flush title="What has been established about each document">
                   <table className="table">

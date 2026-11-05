@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, flattenResult, ruleNodeSchema, validateRule, type RuleNode } from '../src/domain/rules.js';
+import { evaluate, flattenResult, ruleNodeSchema, validateRule, type RuleNode, withoutRetiredFacts } from '../src/domain/rules.js';
 import { RULES, SETTINGS_DEFAULTS } from '../src/seedData.js';
 import type { FactText } from '../src/domain/facts.js';
 
@@ -18,9 +18,9 @@ describe('rule engine — operators', () => {
     ['income.annualIncome', 100, 'lt', 101, 'pass'],
     ['marksheet.percentage', 70, 'between', [60, 75], 'pass'],
     ['marksheet.percentage', 76, 'between', [60, 75], 'fail'],
-    ['applicant.category', 'SC', 'in', ['SC', 'ST'], 'pass'],
-    ['applicant.category', 'GEN', 'in', ['SC', 'ST'], 'fail'],
-    ['applicant.category', 'GEN', 'not_in', ['SC', 'ST'], 'pass'],
+    ['applicant.gender', 'other', 'in', ['female', 'other'], 'pass'],
+    ['applicant.gender', 'male', 'in', ['female', 'other'], 'fail'],
+    ['applicant.gender', 'male', 'not_in', ['female', 'other'], 'pass'],
     ['applicant.gender', 'female', 'eq', 'female', 'pass'],
     ['applicant.gender', 'male', 'neq', 'female', 'pass'],
     ['marksheet.consistent', true, 'is_true', undefined, 'pass'],
@@ -83,8 +83,9 @@ describe('rule validation', () => {
     [cond('marksheet.consistent', 'gte', 1), /not valid for boolean/],
     [cond('marksheet.percentage', 'gte', '60'), /must be a number/],
     [cond('marksheet.percentage', 'between', [60]), /\[min, max\]/],
-    [cond('applicant.category', 'in', []), /non-empty list/],
-    [cond('applicant.category', 'in', ['XYZ']), /not allowed/],
+    [cond('applicant.gender', 'in', []), /non-empty list/],
+    [cond('applicant.gender', 'in', ['XYZ']), /not allowed/],
+    [cond('applicant.category', 'in', ['SC']), /unknown fact/], // retired: no longer collected
   ])('rejects invalid rule %#', (rule, message) => {
     expect(validateRule(rule).join()).toMatch(message);
   });
@@ -104,7 +105,6 @@ describe('rule validation', () => {
 describe('live scholarship fixture set', () => {
   const eligible = {
     'applicant.gender': 'female',
-    'applicant.category': 'OBC',
     'marksheet.percentage': 88.2,
     'marksheet.consistent': true,
     'income.annualIncome': 240000,
@@ -123,7 +123,6 @@ describe('live scholarship fixture set', () => {
     ['GSTEM-2026', { ...eligible, 'applicant.gender': 'male' }, 'fail'],
     ['GSTEM-2026', { ...eligible, 'marksheet.percentage': 74 }, 'fail'],
     ['GSTEM-2026', { ...eligible, 'income.annualIncome': 900000 }, 'fail'],
-    ['GSTEM-2026', { ...eligible, 'income.annualIncome': 900000, 'applicant.category': 'ST' }, 'pass'],
     ['GSTEM-2026', { ...eligible, 'identity.provided': false }, 'fail'],
   ];
   it.each(fixtures)('%s fixture %#', (code, facts, expected) => {
@@ -136,5 +135,24 @@ describe('fact wording', () => {
     const c: RuleNode = { type: 'condition', fact: 'income.annualIncome', operator: 'lte', value: 100 };
     expect(evaluate(c, { 'income.annualIncome': 50 }, { 'income.annualIncome': { label: 'Household income' } }).reason).toBe('Household income is 50; required: is at most 100');
     expect(evaluate(c, { 'income.annualIncome': 50 }).reason).toBe('income.annualIncome is 50; required: is at most 100');
+  });
+});
+
+describe('retiring a fact', () => {
+  it('drops its conditions and any group left empty, keeping the rest of the rule', () => {
+    const root: RuleNode = {
+      type: 'group', op: 'AND', children: [
+        cond('marksheet.percentage', 'gte', 75),
+        { type: 'group', op: 'OR', children: [cond('income.annualIncome', 'lte', 800000), cond('applicant.category', 'in', ['SC'])] },
+        { type: 'group', op: 'OR', children: [cond('applicant.category', 'in', ['ST'])] },
+      ],
+    };
+    expect(withoutRetiredFacts(root)).toEqual({
+      type: 'group', op: 'AND', children: [
+        cond('marksheet.percentage', 'gte', 75),
+        { type: 'group', op: 'OR', children: [cond('income.annualIncome', 'lte', 800000)] },
+      ],
+    });
+    expect(withoutRetiredFacts(cond('applicant.category', 'eq', 'SC'))).toBeNull();
   });
 });

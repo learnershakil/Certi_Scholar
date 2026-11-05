@@ -16,6 +16,15 @@ const schema = z
     STORAGE_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, 'STORAGE_KEY must be 32 bytes base64'),
     STORAGE_KEY_ID: z.string().default('k1'),
     STORAGE_DIR: z.string().default('./.data/documents'),
+    // Where encrypted documents are kept: a private volume (file) or a Cloudflare R2 bucket (r2).
+    STORAGE_DRIVER: z.enum(['file', 'r2']).default('file'),
+    R2_ACCOUNT_ID: z.string().optional(),
+    R2_ACCESS_KEY_ID: z.string().optional(),
+    R2_SECRET_ACCESS_KEY: z.string().optional(),
+    R2_BUCKET_NAME: z.string().optional(),
+    R2_ENDPOINT: z.string().url().optional(),
+    R2_REGION: z.string().default('auto'),
+    R2_KEY_PREFIX: z.string().default('documents/'),
     MAX_UPLOAD_BYTES: z.coerce.number().default(10 * 1024 * 1024),
     MALWARE_SCANNER: z.enum(['clamav', 'signature']).default('clamav'),
     CLAMAV_HOST: z.string().default('localhost'),
@@ -38,6 +47,14 @@ const schema = z
     SEED_DEMO_PASSWORD: z.string().min(10).optional(),
   })
   .superRefine((env, ctx) => {
+    if (env.STORAGE_DRIVER === 'r2') {
+      for (const key of ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required when STORAGE_DRIVER=r2' });
+      }
+      if (!env.R2_ENDPOINT && !env.R2_ACCOUNT_ID) {
+        ctx.addIssue({ code: 'custom', path: ['R2_ACCOUNT_ID'], message: 'R2_ACCOUNT_ID or R2_ENDPOINT is required when STORAGE_DRIVER=r2' });
+      }
+    }
     if (env.SEED_DEMO && !env.SEED_DEMO_PASSWORD) {
       ctx.addIssue({ code: 'custom', path: ['SEED_DEMO_PASSWORD'], message: 'required when SEED_DEMO=true' });
     }

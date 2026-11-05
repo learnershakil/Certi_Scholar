@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, patch, post } from '@/lib/api';
@@ -10,15 +11,15 @@ import { useDocTypes, useMe } from '@/components/AppShell';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { FieldList } from '@/components/FieldList';
 import { StageTracker, Timeline } from '@/components/Progress';
-import { Card, ErrorText, Loading, Notice, PageHead, StatusPill } from '@/components/ui';
+import { Card, ErrorText, Loading, Modal, Notice, PageHead, StatusPill } from '@/components/ui';
 
 const ACTIVE = ['queued', 'processing'];
 
-/** Fetches a short-lived signed URL for the preview and renews it before it expires. */
+/** Fetches a short-lived signed URL for the preview and renews it before it expires. Undefined while loading, null if none. */
 function usePreviewUrl(id: string, enabled: boolean) {
-  const [url, setUrl] = useState<string>();
+  const [url, setUrl] = useState<string | null>();
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return setUrl(null);
     let timer: ReturnType<typeof setTimeout>;
     const fetchUrl = async () => {
       try {
@@ -26,7 +27,7 @@ function usePreviewUrl(id: string, enabled: boolean) {
         setUrl(r.url);
         timer = setTimeout(fetchUrl, Math.max(10_000, new Date(r.expiresAt).getTime() - Date.now() - 15_000));
       } catch {
-        setUrl(undefined);
+        setUrl(null);
       }
     };
     void fetchUrl();
@@ -101,6 +102,54 @@ function VerificationPanel({ doc, canRequest, canManual, onChange }: { doc: Docu
   );
 }
 
+const REJECT_REASONS = [
+  'This is not the document requested (wrong type of document).',
+  'The document is unreadable or incomplete.',
+  'The document does not belong to the applicant.',
+];
+
+/** Asks for the reason the student will see before rejecting a document. */
+function RejectDialog({ name, onClose, onReject }: { name: string; onClose: () => void; onReject: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const submit = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await onReject(reason.trim());
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title="Reject document"
+      subtitle={name}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-danger" disabled={busy || reason.trim().length < 5} onClick={submit}>{busy ? 'Rejecting…' : 'Reject document'}</button>
+        </>
+      }
+    >
+      <p className="muted" style={{ marginTop: 0 }}>The student is notified with this reason and asked to upload the correct document. A rejected document no longer counts towards any application.</p>
+      <div className="form-row">
+        <label className="label" htmlFor="reject-common">Common reason</label>
+        <select id="reject-common" className="select" value={REJECT_REASONS.includes(reason) ? reason : ''} onChange={(e) => setReason(e.target.value)}>
+          <option value="">Write my own</option>
+          {REJECT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <label className="label" htmlFor="reject-reason">Reason shown to the student</label>
+      <textarea id="reject-reason" className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+      <ErrorText error={error} />
+    </Modal>
+  );
+}
+
 export default function DocumentPage() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
@@ -109,6 +158,7 @@ export default function DocumentPage() {
   const fields = useApi<ExtractedField[]>(accessible ? `/documents/${id}/fields` : null);
   const timeline = useApi<TimelineEntry[]>(accessible ? `/documents/${id}/timeline` : null);
   const preview = usePreviewUrl(id, accessible && doc.data!.status !== 'purged');
+  const [rejecting, setRejecting] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>();
   const [newType, setNewType] = useState<string>();
@@ -158,7 +208,7 @@ export default function DocumentPage() {
 
   const d = doc.data;
   const staff = me.role === 'verifier' || me.role === 'admin';
-  const editable = staff && (me.role === 'admin' || d.assignedTo === me.id) && d.status !== 'purged';
+  const editable = staff && (me.role === 'admin' || d.assignedTo === me.id) && !['purged', 'rejected'].includes(d.status);
   const pending = fields.data?.filter((f) => f.status === 'needs_review').length ?? 0;
   const chosenType = newType ?? d.documentType ?? docTypes[0]?.code ?? '';
 
@@ -194,6 +244,7 @@ export default function DocumentPage() {
               <button className="btn" onClick={() => run(() => post(`/documents/${id}/reprocess`, { from: d.status === 'failed' ? 'ocr' : 'analyse' }))}>
                 {d.status === 'failed' ? 'Retry processing' : 'Reprocess'}
               </button>
+              <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
               {d.status === 'needs_review' && (
                 <button className="btn btn-primary" disabled={pending > 0 || !d.documentType} onClick={() => run(() => post(`/documents/${id}/review/complete`))}>
                   Complete review{pending ? ` (${pending} pending)` : ''}
@@ -203,8 +254,26 @@ export default function DocumentPage() {
           )
         }
       />
+      {rejecting && (
+        <RejectDialog
+          name={d.originalName}
+          onClose={() => setRejecting(false)}
+          onReject={async (reason) => {
+            await post(`/documents/${id}/reject`, { reason });
+            setRejecting(false);
+            await refreshAll();
+          }}
+        />
+      )}
       <div className="stack">
         <ErrorText error={actionError} />
+        {d.status === 'rejected' && d.rejection && (
+          <Notice tone="danger">
+            <strong>Rejected {dateTime(d.rejection.at)}. </strong>
+            {d.rejection.reason}
+            {me.role === 'student' && <> Upload the correct document on <Link href="/documents">My documents</Link>.</>}
+          </Notice>
+        )}
         <Notice tone={d.authenticity.established ? 'success' : 'warning'}>
           <strong>{d.authenticity.established ? 'Authenticity confirmed. ' : 'Authenticity not established. '}</strong>
           {d.authenticity.text}

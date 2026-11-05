@@ -19,7 +19,6 @@
     "name": "Ananya Sharma",
     "role": "student",
     "profile": {
-      "category": "OBC",
       "gender": "female",
       "state": "Karnataka"
     }
@@ -29,7 +28,6 @@
     "name": "Arjun Verma",
     "role": "student",
     "profile": {
-      "category": "GEN",
       "gender": "male",
       "state": "Maharashtra"
     }

@@ -10,6 +10,7 @@ import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
 import { hashPassword } from '../lib/crypto.js';
 import { ocrClient } from '../ocr/client.js';
+import { blobStore } from '../lib/storage.js';
 
 export const admin = Router();
 admin.use(requireRole('admin'));
@@ -72,7 +73,7 @@ const userBody = z.object({
   name: z.string().min(2),
   role: z.enum(ROLES),
   password: z.string().min(10),
-  profile: z.object({ category: z.enum(['GEN', 'EWS', 'OBC', 'SC', 'ST']).optional(), gender: z.enum(['female', 'male', 'other']).optional(), state: z.string().optional() }).optional(),
+  profile: z.object({ gender: z.enum(['female', 'male', 'other']).optional(), state: z.string().optional() }).optional(),
 });
 
 admin.post('/users', async (req, res) => {
@@ -149,5 +150,5 @@ admin.get('/access-log', async (_req, res) => {
 });
 
 admin.get('/health', async (_req, res) => {
-  res.json({ ocr: await ocrClient().health() });
+  res.json({ ocr: await ocrClient().health(), storage: await blobStore().health() });
 });

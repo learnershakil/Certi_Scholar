@@ -62,6 +62,22 @@ describe('login page', () => {
     expect(replace).toHaveBeenCalledWith('/review');
   });
 
+  it('sends a first-time user, or a student with details missing, to their profile', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: '1', name: 'New', email: 'n', role: 'student', firstLogin: true, profileComplete: false }), { status: 200 }));
+    renderLogin();
+    await fill('student');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(replace).toHaveBeenCalledWith('/profile?welcome=1');
+  });
+
+  it('sends staff to their profile on their first sign-in only', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: '2', name: 'Rahul', email: 'v', role: 'verifier', firstLogin: true, profileComplete: true }), { status: 200 }));
+    renderLogin();
+    await fill('verifier');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(replace).toHaveBeenCalledWith('/profile?welcome=1');
+  });
+
   it('shows the server’s message when the role does not match', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { code: 'invalid_credentials', message: 'Email, password or role is incorrect' } }), { status: 401 }));
     renderLogin();

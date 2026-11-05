@@ -1,3 +1,4 @@
+import type { Types } from 'mongoose';
 import { ConsistencyCheckModel, DocumentModel, ExtractedFieldModel, type VerificationStatus } from '../models/document.js';
 import { ApplicationModel, RecommendationModel, ScholarshipModel, ScholarshipRuleModel } from '../models/scholarship.js';
 import { UserModel } from '../models/user.js';
@@ -9,19 +10,11 @@ import { notify, timeline } from '../lib/events.js';
 
 const OUTCOME = { pass: 'recommended', fail: 'not_recommended', unknown: 'needs_review' } as const;
 
-/** M9 — builds facts from reviewed documents, evaluates the active rule version and stores an explainable recommendation. */
-export async function evaluateApplication(applicationId: string, actorId?: string) {
-  const app = await ApplicationModel.findById(applicationId);
-  if (!app) return null;
-  const [student, scholarship, rule] = await Promise.all([
-    UserModel.findById(app.student).lean(),
-    ScholarshipModel.findById(app.scholarship).lean(),
-    ScholarshipRuleModel.findOne({ scholarship: app.scholarship, active: true }).sort({ version: -1 }).lean(),
-  ]);
-  if (!scholarship || !rule) throw new Error('Scholarship has no active rule set');
+type DocumentRecord = { _id: Types.ObjectId; documentType?: string | null; verification?: { status?: string | null } | null };
 
-  const docs = await DocumentModel.find({ _id: { $in: app.documents }, status: { $ne: 'purged' } }).lean();
-  const docFacts: DocumentFacts[] = await Promise.all(
+/** Extracted fields, consistency results and verification status of each document, as the rule facts need them. */
+export async function documentFacts(docs: DocumentRecord[]): Promise<DocumentFacts[]> {
+  return Promise.all(
     docs.map(async (d) => {
       const [fields, checks] = await Promise.all([
         ExtractedFieldModel.find({ document: d._id }).lean(),
@@ -36,6 +29,21 @@ export async function evaluateApplication(applicationId: string, actorId?: strin
       };
     }),
   );
+}
+
+/** M9 — builds facts from reviewed documents, evaluates the active rule version and stores an explainable recommendation. */
+export async function evaluateApplication(applicationId: string, actorId?: string) {
+  const app = await ApplicationModel.findById(applicationId);
+  if (!app) return null;
+  const [student, scholarship, rule] = await Promise.all([
+    UserModel.findById(app.student).lean(),
+    ScholarshipModel.findById(app.scholarship).lean(),
+    ScholarshipRuleModel.findOne({ scholarship: app.scholarship, active: true }).sort({ version: -1 }).lean(),
+  ]);
+  if (!scholarship || !rule) throw new Error('Scholarship has no active rule set');
+
+  const docs = await DocumentModel.find({ _id: { $in: app.documents }, status: { $nin: ['purged', 'rejected'] } }).lean();
+  const docFacts = await documentFacts(docs);
 
   const { facts, provenance } = deriveFacts(student?.profile ?? {}, docFacts);
   const evaluation = evaluate(rule.root as unknown as RuleNode, facts, (await getSettings()).factText as FactText);

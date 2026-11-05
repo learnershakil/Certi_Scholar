@@ -6,6 +6,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { api, post } from '@/lib/api';
 import { dateTime, setDocTypeNames } from '@/lib/format';
 import { initials, roleLabel, useBranding } from '@/lib/branding';
+import { Loading } from './ui';
 import type { DocTypeDef, Me, Role } from '@/lib/types';
 import { Icon, type IconName } from './Icon';
 
@@ -22,6 +23,7 @@ const NAV: Array<{ section: string; items: Array<{ href: string; label: string; 
   {
     section: 'Work',
     items: [
+      { href: '/dashboard', label: 'Dashboard', icon: 'home', roles: ['student'] },
       { href: '/documents', label: 'My documents', icon: 'file', roles: ['student'] },
       { href: '/applications', label: 'My applications', icon: 'inbox', roles: ['student'] },
       { href: '/review', label: 'Review queue', icon: 'check', roles: ['verifier', 'admin'] },
@@ -39,9 +41,13 @@ const NAV: Array<{ section: string; items: Array<{ href: string; label: string; 
       { href: '/admin/audit', label: 'Audit log', icon: 'list', roles: ['admin'] },
     ],
   },
+  {
+    section: 'Account',
+    items: [{ href: '/profile', label: 'Profile & password', icon: 'user', roles: ['student', 'verifier', 'scholarship_officer', 'admin'] }],
+  },
 ];
 
-export const HOME: Record<Role, string> = { student: '/documents', verifier: '/review', scholarship_officer: '/applications', admin: '/admin/scholarships' };
+export const HOME: Record<Role, string> = { student: '/dashboard', verifier: '/review', scholarship_officer: '/applications', admin: '/admin/scholarships' };
 
 function Notifications() {
   const [open, setOpen] = useState(false);
@@ -99,8 +105,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router, pathname]);
 
   const reloadMe = async () => setMe(await api<Me>('/auth/me'));
+  const mustCompleteProfile = me?.profileComplete === false && !pathname.startsWith('/profile');
+  useEffect(() => {
+    if (mustCompleteProfile) router.replace('/profile?welcome=1');
+  }, [mustCompleteProfile, router]);
 
-  if (!me) return <div className="empty">Loading…</div>;
+  if (!me || mustCompleteProfile) return <Loading />;
   const current = NAV.flatMap((s) => s.items).find((i) => i.roles.includes(me.role) && pathname.startsWith(i.href));
 
   return (

@@ -15,7 +15,6 @@ export type FactText = Record<string, { label?: string; description?: string }>;
  * deriveFacts() must compute it; what a fact is called is not (see FactText).
  */
 export const FACT_CATALOG: Record<string, FactDefinition> = {
-  'applicant.category': { type: 'enum', options: ['GEN', 'EWS', 'OBC', 'SC', 'ST'] },
   'applicant.gender': { type: 'enum', options: ['female', 'male', 'other'] },
   'applicant.state': { type: 'string' },
   'marksheet.percentage': { type: 'number' },
@@ -61,7 +60,7 @@ const usable = (f?: { value: string | null; status: string }) => (f && f.status 
  * Derives rule facts from reviewed document data. Fields still awaiting review are deliberately
  * withheld so a low-confidence guess can never decide eligibility.
  */
-export function deriveFacts(profile: { category?: string | null; gender?: string | null; state?: string | null }, docs: DocumentFacts[]) {
+export function deriveFacts(profile: { gender?: string | null; state?: string | null }, docs: DocumentFacts[]) {
   const facts: Record<string, unknown> = {};
   const provenance: Record<string, Provenance> = {};
   const set = (k: string, v: unknown, p: Provenance) => {
@@ -70,7 +69,6 @@ export function deriveFacts(profile: { category?: string | null; gender?: string
     provenance[k] = p;
   };
 
-  set('applicant.category', profile.category, { source: 'Applicant profile (self-declared)' });
   set('applicant.gender', profile.gender, { source: 'Applicant profile (self-declared)' });
   set('applicant.state', profile.state, { source: 'Applicant profile (self-declared)' });
 

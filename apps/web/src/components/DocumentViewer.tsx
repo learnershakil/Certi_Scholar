@@ -13,12 +13,14 @@ export function DocumentViewer({
   onSelect,
   page = 0,
 }: {
-  src?: string;
+  /** Undefined while the link is being fetched; null when there is no preview. */
+  src?: string | null;
   fields: ExtractedField[];
   activeKey?: string | null;
   onSelect: (key: string) => void;
   page?: number;
 }) {
+  if (src === undefined) return <div className="viewer empty" role="status"><span className="spinner" aria-hidden /><span className="sr-only">Loading preview…</span></div>;
   if (!src) return <div className="viewer empty">Preview unavailable</div>;
   return (
     <div className="viewer" aria-label="Document preview">
