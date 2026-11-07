@@ -108,6 +108,8 @@ const DocumentSchema = new Schema(
     ocrProvider: String,
     assignedTo: { type: ObjectId, ref: 'User', index: true },
     reviewCompletedAt: Date,
+    // Result of the malware scan done before the file was stored (only clean files are ever stored).
+    scan: { engine: String, clean: Boolean, scannedAt: Date },
     // A verifier's decision that this is not a usable document (wrong document, unreadable, not the applicant's).
     rejection: { reason: String, at: Date, by: { type: ObjectId, ref: 'User' } },
     reviewedBy: { type: ObjectId, ref: 'User' },
@@ -217,7 +219,31 @@ const VerificationResultSchema = new Schema(
 export const DocumentTypeModel = model('DocumentType', DocumentTypeSchema);
 export const ExtractionProfileModel = model('ExtractionProfile', ExtractionProfileSchema);
 export const DocumentModel = model('Document', DocumentSchema);
+/** Result of comparing a document's extracted details with its owner's profile (one per document). */
+const ProfileMatchSchema = new Schema(
+  {
+    document: { type: ObjectId, ref: 'Document', required: true, unique: true },
+    engine: { type: String, required: true },
+    model: String,
+    note: String,
+    checkedAt: { type: Date, required: true },
+    results: [
+      {
+        _id: false,
+        field: String,
+        label: String,
+        documentValue: String,
+        profileValue: String,
+        outcome: { type: String, enum: ['match', 'mismatch', 'unclear'] },
+        reason: String,
+      },
+    ],
+  },
+  { timestamps: true },
+);
+
 export const ExtractedFieldModel = model('ExtractedField', ExtractedFieldSchema);
+export const ProfileMatchModel = model('ProfileMatch', ProfileMatchSchema);
 export const CorrectionModel = model('Correction', CorrectionSchema);
 export const ConsistencyCheckModel = model('ConsistencyCheck', ConsistencyCheckSchema);
 export const VerificationRequestModel = model('VerificationRequest', VerificationRequestSchema);

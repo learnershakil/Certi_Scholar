@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
-import { dateTime, docType } from '@/lib/format';
+import { usePaged } from '@/lib/usePaged';
+import { dateTime, docType, scannerName } from '@/lib/format';
 import type { DocumentSummary } from '@/lib/types';
 import { useDocTypes, useMe } from '@/components/AppShell';
-import { Card, Empty, ErrorText, Loading, PageHead, StatusPill } from '@/components/ui';
+import { Card, Empty, ErrorText, Loading, Notice, PageHead, Pagination, ProfileFlag, StatusPill } from '@/components/ui';
 
 const ACTIVE = ['queued', 'processing'];
 
@@ -27,6 +28,7 @@ function Upload({ onDone }: { onDone: () => void }) {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [scanned, setScanned] = useState<string>();
   const [declaredType, setDeclaredType] = useState('');
   const docTypes = useDocTypes();
 
@@ -35,6 +37,7 @@ function Upload({ onDone }: { onDone: () => void }) {
   const send = async (file?: File) => {
     if (!file) return;
     setError(undefined);
+    setScanned(undefined);
     // The same limits the server enforces, checked first so a large file is not sent for nothing.
     if (policy.data && file.size > policy.data.maxBytes) {
       setError(`"${file.name}" is ${megabytes(file.size)}. The limit is ${megabytes(policy.data.maxBytes)}. Compress it or scan it at a lower resolution, then upload again.`);
@@ -56,6 +59,8 @@ function Upload({ onDone }: { onDone: () => void }) {
         const body = await res.json().catch(() => null);
         throw new ApiError(res.status, body?.error?.code, body?.error?.message ?? uploadFailure(res.status));
       }
+      const body = (await res.json().catch(() => null)) as { originalName?: string; scan?: { engine: string } } | null;
+      setScanned(`"${body?.originalName ?? file.name}" was scanned by ${scannerName(body?.scan?.engine)}: no virus found. It is stored encrypted and processing has started.`);
       onDone();
     } catch (e) {
       // fetch itself throws only when the request never completed (connection lost, server unreachable).
@@ -88,6 +93,7 @@ function Upload({ onDone }: { onDone: () => void }) {
         </button>
       </div>
       {error && <div style={{ flexBasis: '100%' }}><ErrorText error={error} /></div>}
+      {scanned && <div style={{ flexBasis: '100%' }}><Notice tone="success"><strong>No virus found. </strong>{scanned}</Notice></div>}
     </div>
   );
 }
@@ -95,10 +101,8 @@ function Upload({ onDone }: { onDone: () => void }) {
 export default function DocumentsPage() {
   const me = useMe();
   const router = useRouter();
-  const { data, error, loading, reload } = useApi<DocumentSummary[]>('/documents', {
-    pollMs: 2500,
-    pollWhile: (docs) => docs.some((d) => ACTIVE.includes(d.status)),
-  });
+  const list = usePaged<DocumentSummary>('/documents', { pollMs: 2500, pollWhile: (docs) => docs.some((d) => ACTIVE.includes(d.status)) });
+  const { data, error, loading, reload } = list;
 
   return (
     <>
@@ -120,6 +124,7 @@ export default function DocumentsPage() {
                 <tr>
                   <th>Document</th>
                   <th>Type</th>
+                  <th>Virus scan</th>
                   <th>Processing</th>
                   <th>Verification</th>
                   <th>Uploaded</th>
@@ -130,7 +135,8 @@ export default function DocumentsPage() {
                   <tr key={d.id} className="clickable" onClick={() => router.push(`/documents/${d.id}`)}>
                     <td><Link href={`/documents/${d.id}`}>{d.originalName}</Link></td>
                     <td>{docType(d.documentType)}</td>
-                    <td><StatusPill status={d.status} />{d.rejection && <div className="small" style={{ color: 'var(--danger)', marginTop: 4, maxWidth: 260 }}>{d.rejection.reason}</div>}</td>
+                    <td title={`Scanned by ${scannerName(d.scan?.engine)} before the file was stored`}><StatusPill status="success" tone="success" label="No virus found" /></td>
+                    <td><div className="row wrap" style={{ gap: '4px 12px' }}><StatusPill status={d.status} /><ProfileFlag value={d.profileMatch} /></div>{d.rejection && <div className="small" style={{ color: 'var(--danger)', marginTop: 4, maxWidth: 260 }}>{d.rejection.reason}</div>}</td>
                     <td>
                       <StatusPill status={d.verification.status} />
                       {d.verification.simulated && <span className="simulated-tag" style={{ marginLeft: 6 }}>SIMULATED</span>}
@@ -141,6 +147,7 @@ export default function DocumentsPage() {
               </tbody>
             </table>
           )}
+          <Pagination page={list.page} pageSize={list.pageSize} total={list.total} setPage={list.setPage} noun="documents" />
         </Card>
       </div>
     </>

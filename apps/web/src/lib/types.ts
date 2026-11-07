@@ -39,6 +39,11 @@ export interface DocumentSummary {
   profileFormat?: string;
   stages: Stage[];
   verification: { status: string; providerLabel?: string; simulated?: boolean; checkedAt?: string };
+  updatedAt?: string;
+  /** How the details read from this document compare with the owner's profile; null until checked. */
+  profileMatch?: 'match' | 'mismatch' | 'unclear' | null;
+  /** Malware scan done before the file was stored. Absent on documents uploaded before scans were recorded. */
+  scan?: { engine: string; clean: boolean; scannedAt?: string };
   /** Set when a verifier rejected the document; the student sees the reason. */
   rejection?: { reason: string; at: string };
   authenticity: Authenticity;

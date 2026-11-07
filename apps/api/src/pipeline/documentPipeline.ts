@@ -12,10 +12,11 @@ import {
 import { ApplicationModel } from '../models/scholarship.js';
 import { getSettings } from '../models/system.js';
 import { blobStore } from '../lib/storage.js';
-import { audit, notify, timeline } from '../lib/events.js';
+import { audit, logger, notify, timeline } from '../lib/events.js';
 import { ocrClient, OcrServiceError, type OcrResult } from '../ocr/client.js';
 import { classify, fullText, pickBestProfile, type Profile } from '../domain/extraction.js';
 import { runConsistencyChecks } from '../domain/consistency.js';
+import { matchDocumentToProfile, needsOfficer } from '../services/profileMatch.js';
 import { jobQueue, PermanentJobError, type JobContext } from './queue.js';
 
 async function stage<T>(doc: DocumentRecord, name: StageName, work: () => Promise<T>): Promise<T> {
@@ -131,11 +132,21 @@ export async function runAnalyse(documentId: string) {
 
   await stage(doc, 'consistency', () => recomputeConsistency(doc._id));
 
+  // Advice for the officer, never a gate on its own: failures fall back to exact rules inside matchDocumentToProfile.
+  const match = await matchDocumentToProfile(doc._id).catch((err) => {
+    logger.error({ err, documentId }, 'profile match failed');
+    return null;
+  });
   const pending = await ExtractedFieldModel.countDocuments({ document: doc._id, status: 'needs_review' });
-  doc.status = pending ? 'needs_review' : 'processed';
+  const profileDiffers = needsOfficer(match);
+  doc.status = pending || profileDiffers ? 'needs_review' : 'processed';
   await doc.save();
-  if (pending) {
-    await notify(doc.owner, 'review_required', `"${doc.originalName}" has ${pending} field(s) awaiting officer review.`, `/documents/${doc.id}`);
+  if (profileDiffers) {
+    await timeline({ document: doc._id, stage: 'consistency', status: 'profile_mismatch', message: `Details differ from the applicant profile (${match!.engine})` });
+  }
+  if (pending || profileDiffers) {
+    const why = [pending && `${pending} field(s) awaiting review`, profileDiffers && 'details that differ from your profile'].filter(Boolean).join(' and ');
+    await notify(doc.owner, 'review_required', `"${doc.originalName}" has ${why}. An officer will check it.`, `/documents/${doc.id}`);
   } else {
     await notify(doc.owner, 'processing_complete', `"${doc.originalName}" has been processed.`, `/documents/${doc.id}`);
     await reevaluateApplicationsFor(doc._id);

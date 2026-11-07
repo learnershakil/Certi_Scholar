@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { config } from './config.js';
 import { logger } from './lib/events.js';
-import { retireRemovedFacts, seedDemo, seedReferenceData, seedScholarships } from './seedData.js';
+import { addNewProfileFields, retireRemovedFacts, seedDemo, seedReferenceData, seedScholarships } from './seedData.js';
 
 const c = config();
 await mongoose.connect(c.MONGO_URL);
@@ -14,5 +14,6 @@ if (c.SEED_DEMO) {
   await seedScholarships();
 }
 await retireRemovedFacts();
+await addNewProfileFields();
 logger.info({ demo: c.SEED_DEMO }, 'seed complete');
 await mongoose.disconnect();

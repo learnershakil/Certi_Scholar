@@ -2,13 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ROLES, UserModel } from '../models/user.js';
 import { NotificationModel } from '../models/system.js';
-import { ApplicationModel } from '../models/scholarship.js';
 import { FACT_CATALOG } from '../domain/facts.js';
-import { jobQueue } from '../pipeline/queue.js';
 import { hashPassword, verifyPassword } from '../lib/crypto.js';
 import { actor, authenticate, issueSession, parse, SESSION_COOKIE } from '../lib/http.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
+import { APPLICANT_DETAILS, DETAIL_LABELS, applicantDetailsChanged, detailValue, profileComplete, type ApplicantDetail } from '../services/applicantDetails.js';
 
 export const auth = Router();
 
@@ -27,16 +26,12 @@ auth.post('/login', async (req, res) => {
   await user.save();
   issueSession(res, { id: user.id, role: user.role });
   await audit({ id: user.id, role: user.role }, 'auth.login', 'User', user._id, firstLogin ? { firstLogin } : undefined, req.ip);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, firstLogin, profileComplete: profileComplete(user) });
+  res.json({ id: user.id, name: user.name ?? null, email: user.email, role: user.role, firstLogin, profileComplete: profileComplete(user) });
 });
 
 auth.post('/logout', (_req, res) => {
   res.clearCookie(SESSION_COOKIE, { path: '/' }).status(204).end();
 });
-
-/** A student's profile is complete once gender and state are set; they decide eligibility. Staff have nothing to complete. */
-export const profileComplete = (u: { role: string; profile?: { gender?: string | null; state?: string | null } | null }) =>
-  u.role !== 'student' || Boolean(u.profile?.gender && u.profile?.state);
 
 auth.get('/me', authenticate, async (req, res) => {
   const me = actor(req);
@@ -46,17 +41,20 @@ auth.get('/me', authenticate, async (req, res) => {
 
 auth.get('/me/profile', authenticate, async (req, res) => {
   const user = await UserModel.findById(actor(req).id).lean();
-  res.json({ id: String(user!._id), name: user!.name, email: user!.email, role: user!.role, profile: user!.profile ?? {}, profileComplete: profileComplete(user!) });
+  res.json({ id: String(user!._id), name: user!.name ?? null, email: user!.email, role: user!.role, profile: user!.profile ?? {}, profileComplete: profileComplete(user!) });
 });
 
 // Allowed values come from the rule-fact catalog, the same list the eligibility rules use.
-const oneOf = (fact: string) => z.string().refine((v) => FACT_CATALOG[fact].options!.includes(v), `Not a valid ${fact.split('.')[1]}`);
+const oneOf = (fact: string) => z.string().refine((v) => v === '' || FACT_CATALOG[fact].options!.includes(v), `Not a valid ${fact.split('.')[1]}`);
+const personName = z.string().trim().max(100).regex(/^([\p{L} .'-]{2,})?$/u, 'Use letters, spaces, dots and apostrophes only');
 const profileBody = z
   .object({
-    name: z.string().trim().min(2).max(100),
+    name: personName,
     profile: z
       .object({
         phone: z.string().trim().regex(/^(\+?[\d][\d\s-]{6,18})?$/, 'Enter a valid phone number'),
+        fatherName: personName,
+        motherName: personName,
         gender: oneOf('applicant.gender'),
         state: z.string().trim().max(60),
       })
@@ -65,39 +63,37 @@ const profileBody = z
   .partial();
 
 /**
- * People edit their own name and contact details. Applicant details (gender, state) are eligibility facts: only
- * students have them, they are set once and then fixed (so eligibility cannot be adjusted by editing them), and
- * setting them is audited and re-checks open applications.
+ * People keep their own name and phone up to date. A student's applicant details (name, parents' names, gender,
+ * state) are entered once and then fixed: only a verification officer or administrator can change them
+ * (PATCH /students/:id), so eligibility and document matching cannot be adjusted by editing the profile.
  */
 auth.patch('/me/profile', authenticate, async (req, res) => {
   const me = actor(req);
   const body = parse(profileBody, req.body);
-  const { phone, ...applicant } = body.profile ?? {};
-  if (me.role !== 'student' && Object.keys(applicant).length) {
-    throw new HttpError(403, 'forbidden', 'Only students have applicant details');
-  }
+  const { phone, ...rest } = body.profile ?? {};
+  const student = me.role === 'student';
+  if (!student && Object.values(rest).some((v) => v !== undefined)) throw new HttpError(403, 'forbidden', 'Only students have applicant details');
   const user = await UserModel.findById(me.id);
-  const before = { name: user!.name, profile: { ...user!.toObject().profile } };
-  for (const key of ['gender', 'state'] as const) {
-    const current = user!.profile?.[key];
-    if (applicant[key] !== undefined && current && applicant[key] !== current) {
-      throw new HttpError(409, 'locked', `Your ${key} is already set and cannot be changed. Contact the scholarship office if it is wrong.`);
+  const next: Partial<Record<ApplicantDetail, string>> = { ...(body.name !== undefined && { name: body.name }), ...rest };
+  for (const k of APPLICANT_DETAILS) {
+    if (next[k] === undefined) continue;
+    if (next[k] === '') throw new HttpError(400, 'bad_request', `Enter your ${DETAIL_LABELS[k]}`);
+    const current = detailValue(user!, k);
+    if (student && current && next[k] !== current) {
+      throw new HttpError(409, 'locked', `Your ${DETAIL_LABELS[k]} is already set. Only a verification officer or administrator can change it.`);
     }
-    if (applicant[key] === '') throw new HttpError(400, 'bad_request', `Enter your ${key}`);
   }
-  const changedApplicant = Object.entries(applicant).some(([k, v]) => v !== undefined && v !== user!.profile?.[k as 'gender' | 'state']);
-  if (body.name !== undefined) user!.name = body.name;
-  for (const [key, value] of Object.entries({ phone, ...applicant })) {
-    if (value !== undefined) user!.set(`profile.${key}`, value === '' ? undefined : value);
+  const changed = APPLICANT_DETAILS.filter((k) => next[k] !== undefined && next[k] !== detailValue(user!, k));
+  const before = Object.fromEntries(changed.map((k) => [k, detailValue(user!, k) ?? null]));
+  for (const k of changed) {
+    if (k === 'name') user!.name = next.name!;
+    else user!.set(`profile.${k}`, next[k]);
   }
+  if (phone !== undefined) user!.set('profile.phone', phone === '' ? undefined : phone);
   await user!.save();
-  await audit(me, 'profile.updated', 'User', user!._id, { before, after: body }, req.ip);
-
-  if (changedApplicant) {
-    const open = await ApplicationModel.find({ student: user!._id, status: { $in: ['submitted', 'under_review', 'evaluated'] } }).select('_id').lean();
-    for (const a of open) await jobQueue().add('application.evaluate', { applicationId: String(a._id) }, { jobId: `evaluate:${a._id}:${Date.now()}` });
-  }
-  res.json({ id: user!.id, name: user!.name, email: user!.email, role: user!.role, profile: user!.toObject().profile ?? {}, profileComplete: profileComplete(user!) });
+  await audit(me, 'profile.updated', 'User', user!._id, { before, after: Object.fromEntries(changed.map((k) => [k, next[k]])), phone: phone !== undefined }, req.ip);
+  if (student && changed.length) await applicantDetailsChanged(user!._id);
+  res.json({ id: user!.id, name: user!.name ?? null, email: user!.email, role: user!.role, profile: user!.toObject().profile ?? {}, profileComplete: profileComplete(user!) });
 });
 
 const passwordBody = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(10).max(200) });

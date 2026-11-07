@@ -45,42 +45,49 @@ afterEach(() => {
 });
 
 describe('profile page', () => {
-  it('welcomes a new student, takes gender and state once, then opens their start page', async () => {
+  it('welcomes a new student, takes name, parents’ names, gender and state once, then opens their start page', async () => {
     me.role = 'student';
-    route({ ...me, profile: {}, profileComplete: false });
+    route({ ...me, name: null, profile: {}, profileComplete: false });
     renderPage();
-    expect(await screen.findByText(/Before you start, add your gender and state/)).toBeInTheDocument();
+    expect(await screen.findByText(/add your name, your parents' names, gender and state of domicile/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Category')).toBeNull(); // no longer collected
     const gender = await screen.findByLabelText('Gender');
     await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('female'));
-    expect(screen.getByText(/once saved they cannot be changed/)).toBeInTheDocument();
+    expect(screen.getByText(/only a verification officer or administrator can change them/)).toBeInTheDocument();
 
+    await userEvent.type(screen.getByLabelText('Full name (as on your documents)'), 'Ananya Sharma');
+    await userEvent.type(screen.getByLabelText("Father's name"), 'Rajesh Sharma');
+    await userEvent.type(screen.getByLabelText("Mother's name"), 'Sunita Sharma');
     await userEvent.selectOptions(gender, 'female');
     await userEvent.type(screen.getByLabelText('State of domicile'), 'Kerala');
     await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'));
     const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
-    expect(JSON.parse(patchCall![1].body)).toEqual({ name: 'Ananya Sharma', profile: { phone: '', gender: 'female', state: 'Kerala' } });
+    expect(JSON.parse(patchCall![1].body)).toEqual({
+      name: 'Ananya Sharma',
+      profile: { phone: '', fatherName: 'Rajesh Sharma', motherName: 'Sunita Sharma', gender: 'female', state: 'Kerala' },
+    });
     expect(reloadMe).toHaveBeenCalled();
   });
 
-  it('shows gender and state read-only once set, and never sends them again', async () => {
+  it('shows a student’s details read-only once set, and only sends the phone afterwards', async () => {
     me.role = 'student';
-    route({ ...me, profile: { gender: 'female', state: 'Karnataka' }, profileComplete: true });
+    route({ ...me, profile: { fatherName: 'Rajesh Sharma', motherName: 'Sunita Sharma', gender: 'female', state: 'Karnataka' }, profileComplete: true });
     renderPage();
-    expect(await screen.findByLabelText<HTMLInputElement>('Gender')).toBeDisabled();
+    for (const label of ['Full name (as on your documents)', "Father's name", "Mother's name", 'Gender']) {
+      expect(await screen.findByLabelText<HTMLInputElement>(label)).toBeDisabled();
+    }
     expect(await screen.findByLabelText<HTMLInputElement>('State of domicile')).toBeDisabled(); // label comes from the rule catalog
-    expect(screen.getByText(/fixed once set/)).toBeInTheDocument();
+    expect(screen.getByText(/Only a verification officer or administrator can change them/)).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeDisabled();
     expect(screen.getByLabelText<HTMLInputElement>('Role').value).toBe('Student');
 
-    await userEvent.clear(screen.getByLabelText('Full name'));
-    await userEvent.type(screen.getByLabelText('Full name'), 'Ananya S.');
+    await userEvent.type(screen.getByLabelText('Phone'), '+91 90000 00000');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Saved.')).toBeInTheDocument();
     const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
-    expect(JSON.parse(patchCall![1].body)).toEqual({ name: 'Ananya S.', profile: { phone: '' } });
+    expect(JSON.parse(patchCall![1].body)).toEqual({ profile: { phone: '+91 90000 00000' } });
     expect(replace).not.toHaveBeenCalled();
   });
 

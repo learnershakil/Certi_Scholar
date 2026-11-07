@@ -2,10 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { DocumentModel, DocumentTypeModel } from '../models/document.js';
 import { UserModel } from '../models/user.js';
-import { profileComplete } from './auth.js';
+import { profileComplete } from '../services/applicantDetails.js';
 import { ApplicationModel, RecommendationModel, ScholarshipModel } from '../models/scholarship.js';
 import { ProcessingTimelineModel } from '../models/system.js';
-import { actor, parse, requireRole } from '../lib/http.js';
+import { actor, parse, requireRole, paging, sendPage } from '../lib/http.js';
 import { applicationScope, loadApplication } from '../lib/access.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit, notify, timeline } from '../lib/events.js';
@@ -23,7 +23,7 @@ applications.post('/', requireRole('student'), async (req, res) => {
   const scholarship = await ScholarshipModel.findOne({ _id: body.scholarshipId, active: true });
   if (!scholarship) throw notFound('Scholarship');
   const student = await UserModel.findById(me.id).lean();
-  if (!profileComplete(student!)) throw badRequest('Complete your profile (gender and state) before applying');
+  if (!profileComplete(student!)) throw badRequest('Complete your profile (name, parents\' names, gender and state) before applying');
   const owned = await DocumentModel.find({ _id: { $in: body.documentIds }, owner: me.id, status: { $nin: ['rejected', 'purged'] } }, 'documentType').lean();
   if (owned.length !== new Set(body.documentIds).size) throw badRequest('Documents must be your own, active uploads');
   // Every required document must be attached, identified by its classified type (not by what the file is called).
@@ -45,15 +45,19 @@ applications.get('/', async (req, res) => {
   const filter: Record<string, unknown> = await applicationScope(actor(req));
   if (typeof req.query.status === 'string') filter.status = req.query.status;
   if (typeof req.query.scholarshipId === 'string') filter.scholarship = req.query.scholarshipId;
-  res.json(
-    await ApplicationModel.find(filter)
+  const p = paging(req);
+  const [items, total] = await Promise.all([
+    ApplicationModel.find(filter)
       .sort({ createdAt: -1 })
-      .limit(config().LIST_PAGE_SIZE)
+      .skip(p.skip)
+      .limit(p.limit)
       .populate('student', 'name email profile')
       .populate('scholarship', 'name code')
       .populate('latestRecommendation', 'outcome summary createdAt')
       .lean(),
-  );
+    p.paged ? ApplicationModel.countDocuments(filter) : undefined,
+  ]);
+  sendPage(res, p, items, total);
 });
 
 applications.get('/:id', async (req, res) => {

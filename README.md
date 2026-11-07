@@ -49,6 +49,7 @@ Nothing environment-specific is written in the code. Each kind of value has one 
 | Secrets: `JWT_SECRET`, `PRESIGN_SECRET`, `STORAGE_KEY`, `REGISTRY_API_KEY` | `.env` (never committed) | `node scripts/init-env.mjs` generates them; edit `.env` and restart. **Never change `STORAGE_KEY` on a system with documents**: they would no longer open |
 | Document file storage: local volume or Cloudflare R2 (`STORAGE_DRIVER`, `R2_*`) | `.env` | See *Moving document storage to Cloudflare R2* below. Files are encrypted by the app before upload either way |
 | Runtime settings: session length, job retries and backoff, worker concurrency, retention schedule, list size, upload limit, OCR timeout | `.env`, documented in `.env.example` | Edit `.env`, then `docker compose up -d`. The API validates every value at startup and names any bad one |
+| Profile matching (OCR'd details vs the applicant profile): `PROFILE_MATCH_PROVIDER` (`groq` or `basic`), `GROQ_API_KEY`, `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_TIMEOUT_MS` | `.env` | Only the compared values go to Groq, never the document image. If Groq fails, exact rules are used and the result says so |
 | Demo accounts and their password | `apps/api/seed/demo-users.json` + `SEED_DEMO`, `SEED_DEMO_PASSWORD` in `.env` | Refused when `NODE_ENV=production` |
 | Login-page demo shortcuts | `NEXT_PUBLIC_DEMO_ACCOUNTS` in `.env` (`email:role,…`) | Rebuild the web image. They fill the email and role only; no password is ever in the web app |
 | Reference data: document types, extraction profiles, scholarships and first rule sets | JSON files in `apps/api/seed/` | Loaded on first start, and only what's missing is created, so later edits made in the app are kept. After that, change them in the app |
@@ -92,6 +93,7 @@ The old copies stay on the `documents` volume, so setting `STORAGE_DRIVER=file` 
 | Web (Vitest + Testing Library) | `cd apps/web && npm test` | bounding-box overlay, review and correction UI, rule builder, explanation tree, stage tracker, API client |
 | End-to-end (live stack) | `node scripts/e2e.mjs` | the full product flow over HTTP against Docker, the 60 s single-document limit and the 500/hour throughput target |
 | Accuracy benchmark | `node scripts/benchmark.mjs [labels.json] [dir]` | per-field accuracy and silent-error count; writes `docs/benchmark-report.md` |
+| Performance benchmark | `node scripts/load-test.mjs [--docs 40] [--concurrency 8]` | uploads concurrently and measures end-to-end and per-stage latency (p50/p95/max) and throughput against the 60 s and 500/hour targets; writes `docs/performance-report.md`, exits non-zero if a target is missed. Creates real documents for the demo student, so use a test stack |
 
 The API tests download a MongoDB binary on first run. On Windows set `MONGOMS_DOWNLOAD_DIR` to a short path (the test setup defaults to `~/.cache/mongodb-binaries`).
 
@@ -107,7 +109,7 @@ cd apps/web && npm run dev
 
 ## API (v1)
 
-`/api/v1/auth/{login,logout,me,me/profile,me/password}` · `/documents` (POST upload, GET list) · `/documents/review-queue` · `/documents/:id` · `/documents/:id/status` · `/documents/:id/fields` (PATCH `/:key` corrects, POST `/:key/confirm` confirms) · `/documents/:id/{claim,type,reprocess,review/complete,access-url,verify,verify/manual,timeline,corrections,access-log}` · `/files/:token` · `/scholarships` · `/scholarships/overview` · `/scholarships/facts` · `/scholarships/rules` · `/scholarships/rules/test` · `/scholarships/:id/rules` · `/applications` · `/applications/:id/{recommendation,decision,timeline}` · `/reports/summary` · `/reports/awards.csv` · `/admin/{settings,users,profiles,document-types,audit,access-log,health}`
+`/api/v1/auth/{login,logout,me,me/profile,me/password}` · `/students` (GET search, PATCH `/:id` corrects details with a reason; verifier and admin) · `/documents` (POST upload, GET list) · `/documents/review-queue` · `/documents/:id` · `/documents/:id/status` · `/documents/:id/fields` (PATCH `/:key` corrects, POST `/:key/confirm` confirms) · `/documents/:id/{claim,type,reprocess,review/complete,access-url,verify,verify/manual,timeline,corrections,access-log}` · `/files/:token` · `/scholarships` · `/scholarships/overview` · `/scholarships/facts` · `/scholarships/rules` · `/scholarships/rules/test` · `/scholarships/:id/rules` · `/applications` · `/applications/:id/{recommendation,decision,timeline}` · `/reports/summary` · `/reports/awards.csv` · `/admin/{settings,users,users/import,profiles,document-types,audit,access-log,health}` · `/documents/:id/profile-match`
 
 Errors always use the shape `{ "error": { "code", "message", "details?" } }`.
 

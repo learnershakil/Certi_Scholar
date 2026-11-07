@@ -9,6 +9,7 @@ import { logger } from '../lib/events.js';
 export const JOB_QUEUES = {
   'document.ocr': 'ocr',
   'document.analyse': 'analysis',
+  'document.profile-match': 'analysis',
   'document.verify': 'verification',
   'application.evaluate': 'evaluation',
   'maintenance.retention': 'maintenance',

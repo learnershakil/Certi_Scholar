@@ -82,6 +82,24 @@ export async function retireRemovedFacts() {
   await UserModel.collection.updateMany({ 'profile.category': { $exists: true } }, { $unset: { 'profile.category': '' } });
 }
 
+/**
+ * New optional fields added to the seed profiles (parents' names, gender) reach installs that already have those
+ * profiles: each active profile missing one of them gets a new version with it appended. Earlier versions stay.
+ */
+export const ADDED_PROFILE_FIELDS = ['father_name', 'mother_name', 'gender'];
+export async function addNewProfileFields() {
+  for (const seed of EXTRACTION_PROFILES) {
+    const live = await ExtractionProfileModel.findOne({ documentType: seed.documentType, format: seed.format, active: true }).sort({ version: -1 }).lean();
+    if (!live) continue;
+    const have = new Set(live.fields.map((f) => f.key));
+    const missing = seed.fields.filter((f) => ADDED_PROFILE_FIELDS.includes(String(f.key)) && !have.has(String(f.key)));
+    if (!missing.length) continue;
+    await ExtractionProfileModel.updateMany({ documentType: live.documentType, format: live.format }, { active: false });
+    const { _id, createdAt, updatedAt, ...rest } = live as typeof live & { createdAt?: Date; updatedAt?: Date };
+    await ExtractionProfileModel.create({ ...rest, version: live.version + 1, active: true, fields: [...live.fields, ...missing] });
+  }
+}
+
 /** Full development seed: reference data, demo accounts (password from SEED_DEMO_PASSWORD) and scholarships. */
 export async function seedDemo() {
   const password = config().SEED_DEMO_PASSWORD;

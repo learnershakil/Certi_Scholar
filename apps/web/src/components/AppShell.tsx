@@ -28,6 +28,7 @@ const NAV: Array<{ section: string; items: Array<{ href: string; label: string; 
       { href: '/applications', label: 'My applications', icon: 'inbox', roles: ['student'] },
       { href: '/review', label: 'Review queue', icon: 'check', roles: ['verifier', 'admin'] },
       { href: '/documents', label: 'Documents', icon: 'file', roles: ['verifier', 'scholarship_officer', 'admin'] },
+      { href: '/students', label: 'Students', icon: 'users', roles: ['verifier', 'admin'] },
       { href: '/applications', label: 'Applications', icon: 'inbox', roles: ['scholarship_officer', 'admin'] },
       { href: '/reports', label: 'Reports', icon: 'chart', roles: ['scholarship_officer', 'admin'] },
     ],
@@ -149,8 +150,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="row">
               <Notifications />
               <Link href="/profile" className="user-link" title="My profile">
-                <span className="avatar">{me.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}</span>
-                <span className="small">{me.name}</span>
+                <span className="avatar">{(me.name || me.email).split(/[ @.]/).filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join('')}</span>
+                <span className="small">{me.name || me.email}</span>
               </Link>
               <button className="btn btn-ghost btn-sm" onClick={() => post('/auth/logout').then(() => router.replace('/login'))}>
                 Sign out

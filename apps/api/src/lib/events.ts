@@ -38,6 +38,7 @@ export const NOTIFICATION_TYPES = [
   'additional_document_needed',
   'verification_outcome',
   'document_rejected',
+  'profile_updated',
   'recommendation_issued',
   'award_decision',
 ] as const;

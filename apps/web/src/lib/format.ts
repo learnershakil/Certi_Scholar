@@ -7,6 +7,9 @@ export const setDocTypeNames = (types: Array<{ code: string; name: string }>) =>
 const STAGE_NAMES: Record<string, string> = { scan: 'Security scan', ocr: 'OCR' };
 export const stageName = (s: string) => STAGE_NAMES[s] ?? humanize(s);
 
+/** Display name of the malware scanner that checked a file. */
+export const scannerName = (engine?: string) => (engine === 'clamav' ? 'ClamAV' : engine === 'signature' ? 'the built-in test scanner' : 'the virus scanner');
+
 export const humanize = (s?: string | null) => (s ? s.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '—');
 
 export const docType = (t?: string | null) => (t ? docTypeNames[t] ?? humanize(t) : 'Unclassified');

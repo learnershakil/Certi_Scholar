@@ -11,12 +11,21 @@ import { Card, ErrorText, Loading, Notice, PageHead } from '@/components/ui';
 
 interface Profile {
   id: string;
-  name: string;
+  name: string | null;
   email: string;
   role: Role;
-  profile: { phone?: string; gender?: string; state?: string };
+  profile: { phone?: string; fatherName?: string; motherName?: string; gender?: string; state?: string };
   profileComplete: boolean;
 }
+
+type DetailKey = 'name' | 'fatherName' | 'motherName' | 'gender' | 'state';
+const DETAILS: Array<{ key: DetailKey; label: string; fact?: string }> = [
+  { key: 'name', label: 'Full name (as on your documents)' },
+  { key: 'fatherName', label: "Father's name" },
+  { key: 'motherName', label: "Mother's name" },
+  { key: 'gender', label: 'Gender', fact: 'applicant.gender' },
+  { key: 'state', label: 'State of domicile', fact: 'applicant.state' },
+];
 
 function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
   const me = useMe();
@@ -26,18 +35,20 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
   const student = me.role === 'student';
   // The choices are the rule engine's own allowed values, so the form and the eligibility rules always agree.
   const facts = useApi<{ facts: Record<string, FactDefinition> }>(student ? '/scholarships/facts' : null);
-  const [form, setForm] = useState({ name: data.name, ...data.profile });
+  const initial = () => ({ name: data.name ?? '', ...data.profile });
+  const [form, setForm] = useState<Record<string, string | undefined>>(initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
-  // Gender and state are fixed once saved; only the ones still missing can be entered.
-  const genderLocked = Boolean(data.profile.gender);
-  const stateLocked = Boolean(data.profile.state);
+  const saved = (k: DetailKey) => (k === 'name' ? data.name : data.profile[k]);
+  // A student's details are entered once; afterwards only the scholarship office can change them. Staff keep their name editable.
+  const locked = (k: DetailKey) => student && Boolean(saved(k));
+  const allLocked = student && DETAILS.every((d) => locked(d.key));
 
-  useEffect(() => setForm({ name: data.name, ...data.profile }), [data]);
+  useEffect(() => setForm(initial()), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k: string) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const options = (fact: string) => facts.data?.facts[fact]?.options ?? [];
-  const label = (fact: string, fallback: string) => facts.data?.facts[fact]?.label ?? fallback;
+  const label = (d: (typeof DETAILS)[number]) => (d.key === 'name' && !student ? 'Full name' : (d.fact && facts.data?.facts[d.fact]?.label) || d.label);
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,9 +57,10 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
     setMsg(undefined);
     try {
       const profile: Record<string, string> = { phone: form.phone ?? '' };
-      if (student && !genderLocked && form.gender) profile.gender = form.gender;
-      if (student && !stateLocked && form.state?.trim()) profile.state = form.state.trim();
-      await patch('/auth/me/profile', { name: form.name, profile });
+      const body: Record<string, unknown> = { profile };
+      if (!locked('name') && form.name?.trim()) body.name = form.name.trim();
+      if (student) for (const d of DETAILS) if (d.key !== 'name' && !locked(d.key) && form[d.key]?.trim()) profile[d.key] = form[d.key]!.trim();
+      await patch('/auth/me/profile', body);
       await reloadMe();
       onSaved();
       // Finishing the profile for the first time takes the person on to their start page.
@@ -61,14 +73,25 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
     }
   };
 
+  const field = (d: (typeof DETAILS)[number]) => (
+    <div className="form-row" key={d.key}>
+      <label className="label" htmlFor={d.key}>{label(d)}</label>
+      {locked(d.key) || (d.key !== 'gender') ? (
+        <input id={d.key} className="input" value={form[d.key] ?? ''} onChange={set(d.key)} readOnly={locked(d.key)} disabled={locked(d.key)} required={!locked(d.key)} minLength={2} />
+      ) : (
+        <select id={d.key} className="select" value={form.gender ?? ''} onChange={set('gender')} required>
+          <option value="" disabled>Select…</option>
+          {options('applicant.gender').map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      )}
+    </div>
+  );
+
   return (
     <form className="stack" onSubmit={save} aria-label="Profile details">
       <div className="grid grid-2">
-        <Card title="Personal details">
-          <div className="form-row">
-            <label className="label" htmlFor="name">Full name</label>
-            <input id="name" className="input" value={form.name} onChange={set('name')} required minLength={2} />
-          </div>
+        <Card title="Account">
+          {!student && field(DETAILS[0])}
           <div className="form-row">
             <label className="label" htmlFor="email">Email</label>
             <input id="email" className="input" value={data.email} readOnly disabled />
@@ -85,26 +108,12 @@ function Details({ data, onSaved }: { data: Profile; onSaved: () => void }) {
         </Card>
         {student && (
           <Card title="Applicant details">
-            {genderLocked && stateLocked ? (
-              <Notice tone="info">These are used by scholarship rules and are fixed once set. If one is wrong, contact the scholarship office.</Notice>
+            {allLocked ? (
+              <Notice tone="info">These are matched against your documents and used by scholarship rules. Only a verification officer or administrator can change them; contact the scholarship office if one is wrong.</Notice>
             ) : (
-              <Notice tone="warning">Scholarship rules use these details. <strong>Check them carefully: once saved they cannot be changed.</strong></Notice>
+              <Notice tone="warning"><strong>Enter these exactly as they appear on your documents.</strong> Once saved, only a verification officer or administrator can change them.</Notice>
             )}
-            <div className="form-row" style={{ marginTop: 12 }}>
-              <label className="label" htmlFor="gender">{label('applicant.gender', 'Gender')}</label>
-              {genderLocked ? (
-                <input id="gender" className="input" value={data.profile.gender} readOnly disabled />
-              ) : (
-                <select id="gender" className="select" value={form.gender ?? ''} onChange={set('gender')} required>
-                  <option value="" disabled>Select…</option>
-                  {options('applicant.gender').map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              )}
-            </div>
-            <div className="form-row">
-              <label className="label" htmlFor="state">{label('applicant.state', 'State')}</label>
-              <input id="state" className="input" value={form.state ?? ''} onChange={set('state')} readOnly={stateLocked} disabled={stateLocked} required={!stateLocked} />
-            </div>
+            <div style={{ marginTop: 12 }}>{DETAILS.map(field)}</div>
           </Card>
         )}
       </div>
@@ -174,7 +183,7 @@ export default function ProfilePage() {
       <PageHead title="My profile" subtitle="Your details and sign-in password." />
       {profile.data && !profile.data.profileComplete && (
         <div style={{ marginBottom: 16 }}>
-          <Notice tone="info"><strong>Welcome.</strong> Before you start, add your gender and state of domicile. Scholarship eligibility depends on them.</Notice>
+          <Notice tone="info"><strong>Welcome.</strong> {profile.data.role === 'student' ? 'Before you start, add your name, your parents\' names, gender and state of domicile. Your documents are checked against them.' : 'Before you start, add your name.'}</Notice>
         </div>
       )}
       <ErrorText error={profile.error} />

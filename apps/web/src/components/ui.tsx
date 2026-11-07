@@ -108,3 +108,45 @@ export const Loading = () => (
   </div>
 );
 export const Empty = ({ children }: { children: ReactNode }) => <div className="empty">{children}</div>;
+
+/** Shown beside a document's status when what OCR read does not match the owner's profile. Nothing is shown for a match. */
+export function ProfileFlag({ value }: { value?: 'match' | 'mismatch' | 'unclear' | null }) {
+  if (value === 'mismatch') return <StatusPill status="fail" tone="danger" label="Details differ from profile" />;
+  if (value === 'unclear') return <StatusPill status="warning" tone="warning" label="Profile check unclear" />;
+  return null;
+}
+
+/** Page numbers around the current page, with the first and last always shown: 1 … 4 5 6 … 12. */
+function pageList(page: number, pages: number): Array<number | '…'> {
+  const keep = new Set([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages));
+  const out: Array<number | '…'> = [];
+  [...keep].sort((a, b) => a - b).forEach((n, i, all) => {
+    if (i && n - all[i - 1] > 1) out.push('…');
+    out.push(n);
+  });
+  return out;
+}
+
+/** "26–50 of 112" with Previous / page numbers / Next. Renders only the count when everything fits on one page. */
+export function Pagination({ page, pageSize, total, setPage, noun = 'items' }: { page: number; pageSize: number; total: number; setPage: (p: number) => void; noun?: string }) {
+  if (!total) return null;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
+  return (
+    <nav className="pager" aria-label="Pagination">
+      <span className="small muted">{pages > 1 ? `${from}–${to} of ${total} ${noun}` : `${total} ${noun}`}</span>
+      {pages > 1 && (
+        <div className="row">
+          <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+          {pageList(page, pages).map((n, i) =>
+            n === '…' ? <span key={`gap-${i}`} className="faint small" aria-hidden>…</span> : (
+              <button key={n} className={`btn btn-sm${n === page ? ' active' : ''}`} aria-current={n === page ? 'page' : undefined} aria-label={`Page ${n}`} onClick={() => setPage(n)}>{n}</button>
+            ),
+          )}
+          <button className="btn btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
+        </div>
+      )}
+    </nav>
+  );
+}

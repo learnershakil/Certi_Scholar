@@ -9,6 +9,7 @@ import { auth } from './routes/auth.js';
 import { documents } from './routes/documents.js';
 import { files } from './routes/files.js';
 import { scholarships } from './routes/scholarships.js';
+import { students } from './routes/students.js';
 import { applications } from './routes/applications.js';
 import { reports } from './routes/reports.js';
 import { admin } from './routes/admin.js';
@@ -47,6 +48,7 @@ export function createApp() {
   v1.use('/applications', applications);
   v1.use('/reports', reports);
   v1.use('/admin', admin);
+  v1.use('/students', students);
   app.use('/api/v1', v1);
 
   app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', message: 'Route not found' } }));

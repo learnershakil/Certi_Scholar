@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { post } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
+import { usePaged } from '@/lib/usePaged';
 import { dateTime, docType, inr } from '@/lib/format';
 import type { Application, DocumentSummary, Scholarship } from '@/lib/types';
 import { useMe } from '@/components/AppShell';
-import { Card, Empty, ErrorText, Loading, PageHead, StatusPill } from '@/components/ui';
+import { Card, Empty, ErrorText, Loading, PageHead, Pagination, StatusPill } from '@/components/ui';
 
 function Apply({ onDone }: { onDone: () => void }) {
   const scholarships = useApi<Scholarship[]>('/scholarships');
@@ -119,7 +120,8 @@ export default function ApplicationsPage() {
   const me = useMe();
   const router = useRouter();
   const [status, setStatus] = useState('');
-  const { data, error, loading, reload } = useApi<Application[]>(`/applications${status ? `?status=${status}` : ''}`);
+  const list = usePaged<Application>(`/applications${status ? `?status=${status}` : ''}`);
+  const { data, error, loading, reload } = list;
 
   return (
     <>
@@ -171,6 +173,7 @@ export default function ApplicationsPage() {
               </tbody>
             </table>
           )}
+          <Pagination page={list.page} pageSize={list.pageSize} total={list.total} setPage={list.setPage} noun="applications" />
         </Card>
       </div>
     </>

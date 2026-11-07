@@ -39,7 +39,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   }
   const user = await UserModel.findById(sub).lean();
   if (!user?.active) throw new HttpError(401, 'unauthenticated', 'Account inactive');
-  req.actor = { id: String(user._id), role: user.role, name: user.name, email: user.email };
+  req.actor = { id: String(user._id), role: user.role, name: user.name ?? '', email: user.email };
   next();
 }
 
@@ -81,4 +81,22 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
   _req.log?.error({ err }, 'unhandled error');
   res.status(500).json({ error: { code: 'internal', message: 'Something went wrong' } });
+}
+
+/**
+ * Optional paging for list endpoints. Without ?page the list is returned as before (up to LIST_PAGE_SIZE, for
+ * callers that need everything, such as dashboard counters). With ?page=N (&pageSize, default 25) only that page is
+ * returned and the total is sent in X-Total-Count, so the body stays a plain array.
+ */
+export function paging(req: Request) {
+  const max = config().LIST_PAGE_SIZE;
+  const page = Math.floor(Number(req.query.page));
+  if (!(page >= 1)) return { paged: false as const, skip: 0, limit: max };
+  const size = Math.min(max, Math.max(1, Math.floor(Number(req.query.pageSize)) || 25));
+  return { paged: true as const, page, size, skip: (page - 1) * size, limit: size };
+}
+
+export function sendPage<T>(res: Response, p: ReturnType<typeof paging>, items: T[], total?: number) {
+  if (p.paged) res.set({ 'X-Total-Count': String(total ?? items.length), 'X-Page': String(p.page), 'X-Page-Size': String(p.size) });
+  res.json(items);
 }

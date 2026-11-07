@@ -11,7 +11,7 @@ import { useDocTypes, useMe } from '@/components/AppShell';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { FieldList } from '@/components/FieldList';
 import { StageTracker, Timeline } from '@/components/Progress';
-import { Card, ErrorText, Loading, Modal, Notice, PageHead, StatusPill } from '@/components/ui';
+import { Card, ErrorText, Loading, Modal, Notice, PageHead, ProfileFlag, StatusPill } from '@/components/ui';
 
 const ACTIVE = ['queued', 'processing'];
 
@@ -150,6 +150,48 @@ function RejectDialog({ name, onClose, onReject }: { name: string; onClose: () =
   );
 }
 
+interface ProfileMatch {
+  engine: string;
+  model?: string;
+  note?: string;
+  checkedAt: string;
+  results: Array<{ field: string; label: string; documentValue: string; profileValue: string; outcome: 'match' | 'mismatch' | 'unclear'; reason: string }>;
+}
+const MATCH_LABEL = { match: 'Matches', mismatch: 'Differs', unclear: 'Unclear' } as const;
+const MATCH_TONE = { match: 'success', mismatch: 'danger', unclear: 'warning' } as const;
+
+/** What OCR read on the document compared with the applicant's profile; differences send the document to an officer. */
+function ProfileMatchCard({ id, version }: { id: string; version?: string }) {
+  const match = useApi<ProfileMatch | null>(`/documents/${id}/profile-match?v=${encodeURIComponent(version ?? '')}`);
+  const m = match.data;
+  const by = m ? (m.engine === 'groq' ? `Groq${m.model ? ` (${m.model})` : ''}` : 'exact rules') : '';
+  return (
+    <Card flush title="Matched against applicant profile" actions={m && <span className="small faint">Checked with {by} · {dateTime(m.checkedAt)}</span>}>
+      {!m ? (
+        <div className="empty">{match.loading ? 'Loading…' : 'Not checked yet. It runs after the details are extracted.'}</div>
+      ) : !m.results.length ? (
+        <div className="empty">{m.note ?? 'Nothing on this document to compare.'}</div>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Detail</th><th>On the document</th><th>In the profile</th><th>Result</th></tr></thead>
+          <tbody>
+            {m.results.map((r) => (
+              <tr key={r.field}>
+                <td>{r.label}</td>
+                <td>{r.documentValue}</td>
+                <td>{r.profileValue}</td>
+                <td><StatusPill status={r.outcome} tone={MATCH_TONE[r.outcome]} label={MATCH_LABEL[r.outcome]} /><div className="small muted" style={{ marginTop: 2 }}>{r.reason}</div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {m?.note && m.results.length > 0 && <div className="small" style={{ padding: '8px 16px', color: 'var(--warning)' }}>{m.note}</div>}
+      <div className="small faint" style={{ padding: '8px 16px' }}>A difference or an unclear result sends the document to a verification officer. A match does not establish that the document is genuine.</div>
+    </Card>
+  );
+}
+
 export default function DocumentPage() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
@@ -226,6 +268,7 @@ export default function DocumentPage() {
               </span>
             )}
             <StatusPill status={d.status} />
+            <ProfileFlag value={d.profileMatch} />
           </span>
         }
         actions={
@@ -351,6 +394,7 @@ export default function DocumentPage() {
               )}
               <div className="small faint" style={{ padding: '8px 12px' }}>Consistency means the document agrees with itself. It does not establish that it is genuine.</div>
             </Card>
+            <ProfileMatchCard id={id} version={d.updatedAt} />
           </div>
         </div>
 

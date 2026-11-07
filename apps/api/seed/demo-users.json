@@ -20,7 +20,9 @@
     "role": "student",
     "profile": {
       "gender": "female",
-      "state": "Karnataka"
+      "state": "Karnataka",
+      "fatherName": "Rajesh Sharma",
+      "motherName": "Sunita Sharma"
     }
   },
   {
@@ -29,7 +31,9 @@
     "role": "student",
     "profile": {
       "gender": "male",
-      "state": "Maharashtra"
+      "state": "Maharashtra",
+      "fatherName": "Vikram Verma",
+      "motherName": "Meena Verma"
     }
   }
 ]

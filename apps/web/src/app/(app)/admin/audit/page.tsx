@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { useApi } from '@/lib/useApi';
+import { usePaged } from '@/lib/usePaged';
 import { dateTime } from '@/lib/format';
-import { Card, Loading, PageHead } from '@/components/ui';
+import { Card, Loading, PageHead, Pagination } from '@/components/ui';
 
 interface AuditRow { _id: string; action: string; entity: string; entityId: string; actor?: { name: string }; actorRole: string; details?: unknown; ip?: string; createdAt: string }
 interface AccessRow { _id: string; document?: { _id: string; originalName: string }; actor?: { name: string; role: string }; variant: string; ip?: string; createdAt: string }
@@ -12,8 +12,8 @@ interface AccessRow { _id: string; document?: { _id: string; originalName: strin
 export default function AuditPage() {
   const [tab, setTab] = useState<'audit' | 'access'>('audit');
   const [action, setAction] = useState('');
-  const audit = useApi<AuditRow[]>(tab === 'audit' ? `/admin/audit${action ? `?action=${encodeURIComponent(action)}` : ''}` : null);
-  const access = useApi<AccessRow[]>(tab === 'access' ? '/admin/access-log' : null);
+  const audit = usePaged<AuditRow>(tab === 'audit' ? `/admin/audit${action ? `?action=${encodeURIComponent(action)}` : ''}` : null);
+  const access = usePaged<AccessRow>(tab === 'access' ? '/admin/access-log' : null);
 
   return (
     <>
@@ -49,6 +49,7 @@ export default function AuditPage() {
               </tbody>
             </table>
           )}
+          <Pagination page={audit.page} pageSize={audit.pageSize} total={audit.total} setPage={audit.setPage} noun="entries" />
         </Card>
       ) : (
         <Card flush title="Document views">
@@ -68,6 +69,7 @@ export default function AuditPage() {
               </tbody>
             </table>
           )}
+          <Pagination page={access.page} pageSize={access.pageSize} total={access.total} setPage={access.setPage} noun="views" />
         </Card>
       )}
     </>

@@ -45,14 +45,15 @@ describe('own profile', () => {
     await student.patch('/api/v1/auth/me/profile').send({ name: 'A' }).expect(400);
   });
 
-  it('fixes gender and state once set: changing them is refused, repeating them is fine', async () => {
+  it('fixes a student’s details once set: changing them is refused, repeating them is fine, phone stays editable', async () => {
     const student = await h.login('student');
     const res = await student.patch('/api/v1/auth/me/profile').send({ profile: { gender: 'male' } }).expect(409);
-    expect(res.body.error.message).toMatch(/already set and cannot be changed/);
-    await student.patch('/api/v1/auth/me/profile').send({ profile: { state: 'Kerala' } }).expect(409);
-    await student.patch('/api/v1/auth/me/profile').send({ profile: { state: '' } }).expect(409);
+    expect(res.body.error.message).toMatch(/gender is already set\. Only a verification officer or administrator can change it/);
+    await student.patch('/api/v1/auth/me/profile').send({ name: 'Ananya S' }).expect(409);
+    await student.patch('/api/v1/auth/me/profile').send({ profile: { fatherName: 'Someone Else' } }).expect(409);
+    await student.patch('/api/v1/auth/me/profile').send({ profile: { state: '' } }).expect(400);
     await student.patch('/api/v1/auth/me/profile').send({ profile: { gender: 'female', state: 'Karnataka', phone: '+91 90000 00000' } }).expect(200);
-    expect((await student.get('/api/v1/auth/me/profile').expect(200)).body.profile).toMatchObject({ gender: 'female', state: 'Karnataka' });
+    expect((await student.get('/api/v1/auth/me/profile').expect(200)).body.profile).toMatchObject({ gender: 'female', state: 'Karnataka', fatherName: 'Rajesh Sharma', phone: '+91 90000 00000' });
   });
 });
 
@@ -74,31 +75,36 @@ describe('password change', () => {
 });
 
 describe('first sign-in and completing the profile', () => {
-  it('flags only the first sign-in, and keeps a new student incomplete until gender and state are set', async () => {
+  it('a new student must give name, parents’ names, gender and state before using the app, once', async () => {
     const admin = await h.login('admin');
-    await admin.post('/api/v1/admin/users').send({ email: 'new.student@example.test', name: 'New Student', role: 'student', password: 'Initial#Pass2026' }).expect(201);
+    await admin.post('/api/v1/admin/users').send({ email: 'new.student@example.test', password: 'Initial#Pass2026' }).expect(201);
     const agent = request.agent(h.app);
     const first = (await agent.post('/api/v1/auth/login').send({ email: 'new.student@example.test', password: 'Initial#Pass2026' }).expect(200)).body;
-    expect(first).toMatchObject({ firstLogin: true, profileComplete: false });
-    expect((await agent.get('/api/v1/auth/me').expect(200)).body.profileComplete).toBe(false);
+    expect(first).toMatchObject({ firstLogin: true, profileComplete: false, name: null, role: 'student' });
 
-    // Applying needs the details the rules use.
+    // Applying needs the details the rules and the document checks use.
     const mcm = (await agent.get('/api/v1/scholarships').expect(200)).body.find((s: { code: string }) => s.code === 'MCM-2026');
     const refused = await agent.post('/api/v1/applications').send({ scholarshipId: mcm._id, documentIds: ['000000000000000000000000'] }).expect(400);
     expect(refused.body.error.message).toMatch(/Complete your profile/);
 
-    await agent.patch('/api/v1/auth/me/profile').send({ profile: { state: '' } }).expect(400);
-    const done = (await agent.patch('/api/v1/auth/me/profile').send({ profile: { gender: 'other', state: 'Goa' } }).expect(200)).body;
-    expect(done.profileComplete).toBe(true);
-    await agent.patch('/api/v1/auth/me/profile').send({ profile: { gender: 'female' } }).expect(409);
+    const partial = (await agent.patch('/api/v1/auth/me/profile').send({ name: 'Kavya Nair', profile: { gender: 'female', state: 'Kerala' } }).expect(200)).body;
+    expect(partial.profileComplete).toBe(false); // parents' names still missing
+    const done = (await agent.patch('/api/v1/auth/me/profile').send({ profile: { fatherName: 'Suresh Nair', motherName: 'Lakshmi Nair' } }).expect(200)).body;
+    expect(done).toMatchObject({ profileComplete: true, name: 'Kavya Nair', profile: { fatherName: 'Suresh Nair', motherName: 'Lakshmi Nair' } });
+    await agent.patch('/api/v1/auth/me/profile').send({ profile: { motherName: 'Someone Else' } }).expect(409);
 
     const again = (await request.agent(h.app).post('/api/v1/auth/login').send({ email: 'new.student@example.test', password: 'Initial#Pass2026' }).expect(200)).body;
     expect(again).toMatchObject({ firstLogin: false, profileComplete: true });
   });
 
-  it('never asks staff to complete applicant details', async () => {
-    const verifier = await h.login('verifier');
-    expect((await verifier.get('/api/v1/auth/me').expect(200)).body.profileComplete).toBe(true);
+  it('a new staff member only adds their name, and can change it later', async () => {
+    const admin = await h.login('admin');
+    await admin.post('/api/v1/admin/users').send({ email: 'new.verifier@example.test', role: 'verifier', password: 'Initial#Pass2026' }).expect(201);
+    const agent = request.agent(h.app);
+    expect((await agent.post('/api/v1/auth/login').send({ email: 'new.verifier@example.test', password: 'Initial#Pass2026' }).expect(200)).body).toMatchObject({ firstLogin: true, profileComplete: false });
+    await agent.patch('/api/v1/auth/me/profile').send({ profile: { gender: 'male' } }).expect(403);
+    expect((await agent.patch('/api/v1/auth/me/profile').send({ name: 'Imran Khan' }).expect(200)).body.profileComplete).toBe(true);
+    expect((await agent.patch('/api/v1/auth/me/profile').send({ name: 'Imran A. Khan' }).expect(200)).body.name).toBe('Imran A. Khan');
   });
 });
 

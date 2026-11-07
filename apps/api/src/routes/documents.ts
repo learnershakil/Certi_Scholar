@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import {
   ConsistencyCheckModel,
+  ProfileMatchModel,
   CorrectionModel,
   DocumentModel,
   DocumentTypeModel,
@@ -15,7 +16,7 @@ import {
   type VerificationStatus,
 } from '../models/document.js';
 import { DocumentAccessLogModel, ProcessingTimelineModel, getSettings } from '../models/system.js';
-import { actor, parse, requireRole } from '../lib/http.js';
+import { actor, parse, requireRole, paging, sendPage } from '../lib/http.js';
 import { documentScope, loadDocument } from '../lib/access.js';
 import { badRequest, conflict, HttpError } from '../lib/errors.js';
 import { hasActivePdfContent, sniffMime } from '../lib/fileType.js';
@@ -67,7 +68,7 @@ documents.post('/', requireRole('student'), rejectOversize, upload.single('file'
   const scan = await malwareScanner().scan(file.buffer);
   if (!scan.clean) {
     await audit(me, 'document.rejected_malware', 'Upload', file.originalname, { signature: scan.signature, engine: scan.engine }, req.ip);
-    throw new HttpError(422, 'malware_detected', 'The file failed the security scan and was not stored');
+    throw new HttpError(422, 'malware_detected', `Virus found in "${file.originalname}" (${scan.signature ?? 'unnamed threat'}). The file was not stored.`, { signature: scan.signature, engine: scan.engine });
   }
 
   const declaredType = typeof req.body?.declaredType === 'string' && req.body.declaredType ? req.body.declaredType : undefined;
@@ -82,14 +83,15 @@ documents.post('/', requireRole('student'), rejectOversize, upload.single('file'
     sha256,
     storageKey: await blobStore().put(file.buffer),
     declaredType,
+    scan: { engine: scan.engine, clean: true, scannedAt: new Date() },
     stages: STAGES.map((name) => (name === 'scan' ? { name, status: 'done', attempts: 1, startedAt: new Date(), finishedAt: new Date() } : { name })),
     retainUntil: new Date(Date.now() + settings.retentionDays * 86_400_000),
   });
-  await timeline({ document: doc._id, stage: 'scan', status: 'done', message: `Clean (${scan.engine})`, actor: me.id });
+  await timeline({ document: doc._id, stage: 'scan', status: 'done', message: `No virus found (${scan.engine})`, actor: me.id });
   await audit(me, 'document.uploaded', 'Document', doc._id, { sha256, mime, size: file.size }, req.ip);
   await jobQueue().add('document.ocr', { documentId: doc.id }, { jobId: `ocr:${doc.id}:1` });
   await notify(me.id, 'document_received', `We received "${doc.originalName}". Processing has started.`, `/documents/${doc.id}`);
-  res.status(202).json({ id: doc.id, status: doc.status });
+  res.status(202).json({ id: doc.id, status: doc.status, originalName: doc.originalName, scan: { engine: scan.engine, clean: true } });
 });
 
 const summary = (d: InstanceType<typeof DocumentModel>) => ({
@@ -104,6 +106,7 @@ const summary = (d: InstanceType<typeof DocumentModel>) => ({
   profileFormat: d.profileFormat,
   stages: d.stages,
   verification: d.verification,
+  scan: d.scan?.engine ? { engine: d.scan.engine, clean: d.scan.clean, scannedAt: d.scan.scannedAt } : undefined,
   rejection: d.rejection?.reason ? { reason: d.rejection.reason, at: d.rejection.at } : undefined,
   authenticity: authenticityStatement((d.verification?.status ?? 'not_verified') as VerificationStatus),
   assignedTo: d.assignedTo,
@@ -112,11 +115,27 @@ const summary = (d: InstanceType<typeof DocumentModel>) => ({
   updatedAt: d.get('updatedAt'),
 });
 
+/** For each document, how its details compare with the owner's profile: the worst result across its fields. */
+async function profileStatus(ids: unknown[]) {
+  const matches = await ProfileMatchModel.find({ document: { $in: ids } } as Record<string, unknown>, 'document results.outcome').lean();
+  return new Map(
+    matches.map((m) => {
+      const outcomes = (m.results ?? []).map((r) => r.outcome);
+      return [String(m.document), outcomes.includes('mismatch') ? 'mismatch' : outcomes.includes('unclear') ? 'unclear' : outcomes.length ? 'match' : null];
+    }),
+  );
+}
+
 documents.get('/', async (req, res) => {
   const filter: Record<string, unknown> = await documentScope(actor(req));
   if (typeof req.query.status === 'string') filter.status = req.query.status;
-  const docs = await DocumentModel.find(filter).sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE);
-  res.json(docs.map(summary));
+  const p = paging(req);
+  const [docs, total] = await Promise.all([
+    DocumentModel.find(filter).sort({ createdAt: -1 }).skip(p.skip).limit(p.limit),
+    p.paged ? DocumentModel.countDocuments(filter) : undefined,
+  ]);
+  const status = await profileStatus(docs.map((d) => d._id));
+  sendPage(res, p, docs.map((d) => ({ ...summary(d), profileMatch: status.get(d.id) ?? null })), total);
 });
 
 const AWAITING_VERIFICATION = ['not_verified', 'simulated_match', 'simulated_mismatch', 'provider_error', 'authority_not_found'];
@@ -167,7 +186,8 @@ documents.get('/:id', async (req, res) => {
     ConsistencyCheckModel.find({ document: doc._id }).lean(),
     VerificationResultModel.find({ document: doc._id }).sort({ createdAt: -1 }).lean(),
   ]);
-  res.json({ ...summary(doc), consistencyChecks: checks, verificationResults });
+  const status = await profileStatus([doc._id]);
+  res.json({ ...summary(doc), profileMatch: status.get(doc.id) ?? null, consistencyChecks: checks, verificationResults });
 });
 
 documents.get('/:id/status', async (req, res) => {
@@ -235,6 +255,12 @@ documents.post('/:id/review/complete', requireRole('verifier', 'admin'), async (
   await notify(doc.owner, 'processing_complete', `"${doc.originalName}" has been reviewed.`, `/documents/${doc.id}`);
   await reevaluateApplicationsFor(doc._id);
   res.json(summary(doc));
+});
+
+/** The comparison of this document's details with its owner's profile. */
+documents.get('/:id/profile-match', async (req, res) => {
+  const doc = await loadDocument(actor(req), String(req.params.id));
+  res.json((await ProfileMatchModel.findOne({ document: doc._id }).lean()) ?? null);
 });
 
 const rejectBody = z.object({ reason: z.string().trim().min(5, 'Give the student a reason of at least 5 characters').max(500) });

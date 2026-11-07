@@ -5,10 +5,11 @@ import { DocumentTypeModel, ExtractionProfileModel } from '../models/document.js
 import { AuditEntryModel, DocumentAccessLogModel, SettingsModel, VERIFICATION_PROVIDER_IDS, getSettings } from '../models/system.js';
 import { ROLES, UserModel } from '../models/user.js';
 import { FACT_CATALOG } from '../domain/facts.js';
-import { actor, parse, requireRole } from '../lib/http.js';
+import { actor, parse, requireRole, paging, sendPage } from '../lib/http.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit } from '../lib/events.js';
 import { hashPassword } from '../lib/crypto.js';
+import { parseCsv } from '../lib/csv.js';
 import { ocrClient } from '../ocr/client.js';
 import { blobStore } from '../lib/storage.js';
 
@@ -64,23 +65,68 @@ admin.put('/settings', async (req, res) => {
   res.json(updated);
 });
 
-admin.get('/users', async (_req, res) => {
-  res.json(await UserModel.find().sort({ role: 1, name: 1 }).lean());
+admin.get('/users', async (req, res) => {
+  const p = paging(req);
+  const [items, total] = await Promise.all([UserModel.find().sort({ role: 1, name: 1, email: 1 }).skip(p.skip).limit(p.limit).lean(), p.paged ? UserModel.countDocuments() : undefined]);
+  sendPage(res, p, items, total);
 });
 
+// Accounts are created with an email and an initial password; the person adds their name (and a student their
+// applicant details) at first sign-in.
 const userBody = z.object({
-  email: z.string().email(),
-  name: z.string().min(2),
-  role: z.enum(ROLES),
-  password: z.string().min(10),
-  profile: z.object({ gender: z.enum(['female', 'male', 'other']).optional(), state: z.string().optional() }).optional(),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address'),
+  role: z.enum(ROLES).default('student'),
+  password: z.string().min(10, 'The initial password needs at least 10 characters').max(200),
 });
 
 admin.post('/users', async (req, res) => {
   const { password, ...body } = parse(userBody, req.body);
+  if (await UserModel.exists({ email: body.email })) throw conflict(`An account for ${body.email} already exists`);
   const user = await UserModel.create({ ...body, passwordHash: hashPassword(password) });
   await audit(actor(req), 'user.created', 'User', user._id, { email: body.email, role: body.role });
   res.status(201).json({ id: user.id, email: user.email, role: user.role });
+});
+
+const MAX_IMPORT_ROWS = 1000;
+
+/**
+ * Creates many accounts from CSV text with the columns email, password and (optionally) role; role defaults to
+ * student. Every row is validated first. With dryRun nothing is created, so the admin can review the result.
+ * Existing emails are skipped, never overwritten.
+ */
+admin.post('/users/import', async (req, res) => {
+  const me = actor(req);
+  const { csv, dryRun } = parse(z.object({ csv: z.string().min(1, 'The CSV file is empty').max(500_000), dryRun: z.boolean().default(false) }), req.body);
+  const [header, ...rows] = parseCsv(csv);
+  const cols = (header ?? []).map((h) => h.toLowerCase());
+  const at = { email: cols.indexOf('email'), password: cols.indexOf('password'), role: cols.indexOf('role') };
+  if (at.email < 0 || at.password < 0) throw badRequest('The first row must name the columns: email, password and optionally role');
+  if (rows.length > MAX_IMPORT_ROWS) throw badRequest(`At most ${MAX_IMPORT_ROWS} accounts per file; this one has ${rows.length}`);
+
+  const seen = new Set<string>();
+  const existing = new Set((await UserModel.find({ email: { $in: rows.map((r) => (r[at.email] ?? '').toLowerCase()) } }, 'email').lean()).map((u) => u.email));
+  const report = rows.map((r, i) => {
+    const line = i + 2; // spreadsheet row number, counting the header
+    const email = (r[at.email] ?? '').toLowerCase();
+    const parsed = userBody.safeParse({ email, password: r[at.password] ?? '', role: at.role >= 0 && r[at.role] ? r[at.role].toLowerCase() : undefined });
+    if (!parsed.success) return { line, email, outcome: 'invalid' as const, reason: parsed.error.issues.map((x) => (x.path[0] === 'role' ? `Unknown role "${r[at.role]}"` : x.message)).join('; ') };
+    if (seen.has(email)) return { line, email, outcome: 'invalid' as const, reason: 'Listed twice in this file' };
+    seen.add(email);
+    if (existing.has(email)) return { line, email, outcome: 'skipped' as const, reason: 'An account with this email already exists' };
+    return { line, email, outcome: 'ready' as const, role: parsed.data.role, password: parsed.data.password };
+  });
+
+  if (!dryRun) {
+    for (const row of report) {
+      if (row.outcome !== 'ready') continue;
+      await UserModel.create({ email: row.email, role: row.role, passwordHash: hashPassword(row.password!) });
+      (row as { outcome: string }).outcome = 'created';
+    }
+  }
+  const summary = Object.fromEntries(['ready', 'created', 'skipped', 'invalid'].map((o) => [o, report.filter((r) => r.outcome === o).length]));
+  if (!dryRun) await audit(me, 'users.imported', 'User', 'bulk', summary, req.ip);
+  // Passwords never leave the server again.
+  res.json({ dryRun, summary, rows: report.map(({ password: _p, ...r }) => r) });
 });
 
 admin.patch('/users/:id', async (req, res) => {
@@ -142,11 +188,21 @@ admin.get('/audit', async (req, res) => {
   const q: Record<string, unknown> = {};
   if (typeof req.query.action === 'string' && req.query.action) q.action = req.query.action;
   if (typeof req.query.entityId === 'string' && req.query.entityId) q.entityId = req.query.entityId;
-  res.json(await AuditEntryModel.find(q).sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE).populate('actor', 'name email').lean());
+  const p = paging(req);
+  const [items, total] = await Promise.all([
+    AuditEntryModel.find(q).sort({ createdAt: -1 }).skip(p.skip).limit(p.limit).populate('actor', 'name email').lean(),
+    p.paged ? AuditEntryModel.countDocuments(q) : undefined,
+  ]);
+  sendPage(res, p, items, total);
 });
 
-admin.get('/access-log', async (_req, res) => {
-  res.json(await DocumentAccessLogModel.find().sort({ createdAt: -1 }).limit(config().LIST_PAGE_SIZE).populate('actor', 'name role').populate('document', 'originalName').lean());
+admin.get('/access-log', async (req, res) => {
+  const p = paging(req);
+  const [items, total] = await Promise.all([
+    DocumentAccessLogModel.find().sort({ createdAt: -1 }).skip(p.skip).limit(p.limit).populate('actor', 'name role').populate('document', 'originalName').lean(),
+    p.paged ? DocumentAccessLogModel.countDocuments() : undefined,
+  ]);
+  sendPage(res, p, items, total);
 });
 
 admin.get('/health', async (_req, res) => {

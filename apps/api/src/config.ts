@@ -45,8 +45,16 @@ const schema = z
     SEED_DIR: z.string().default('./seed'),
     SEED_DEMO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     SEED_DEMO_PASSWORD: z.string().min(10).optional(),
+    // Matching OCR'd details against the applicant's profile: 'groq' (LLM, needs GROQ_API_KEY) or 'basic' (exact rules).
+    PROFILE_MATCH_PROVIDER: z.enum(['groq', 'basic']).default('basic'),
+    GROQ_API_KEY: z.string().optional(),
+    GROQ_MODEL: z.string().default('openai/gpt-oss-120b'),
+    GROQ_TIMEOUT_MS: z.coerce.number().int().min(1000).default(15_000),
   })
   .superRefine((env, ctx) => {
+    if (env.PROFILE_MATCH_PROVIDER === 'groq' && !env.GROQ_API_KEY) {
+      ctx.addIssue({ code: 'custom', path: ['GROQ_API_KEY'], message: 'GROQ_API_KEY is required when PROFILE_MATCH_PROVIDER=groq' });
+    }
     if (env.STORAGE_DRIVER === 'r2') {
       for (const key of ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME'] as const) {
         if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required when STORAGE_DRIVER=r2' });
